@@ -2,3 +2,7 @@
 target/
 
 oci.properties
+
+run.bat
+
+DigiCertGlobalRootCA.crt.pem
