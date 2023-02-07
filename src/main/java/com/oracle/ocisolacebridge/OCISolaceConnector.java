@@ -18,14 +18,30 @@ import com.solace.messaging.config.SolaceConstants.AuthenticationConstants;
 import com.solace.messaging.config.SolaceProperties.AuthenticationProperties;
 import com.solace.messaging.config.SolaceProperties.TransportLayerProperties;
 import com.solace.messaging.config.profile.ConfigurationProfile;
-import com.solace.messaging.publisher.DirectMessagePublisher;
+import com.solace.messaging.publisher.PersistentMessagePublisher;
+import com.solace.messaging.publisher.MessagePublisher;
 import com.solace.messaging.publisher.OutboundMessage;
 import com.solace.messaging.receiver.DirectMessageReceiver;
 import com.solace.messaging.receiver.InboundMessage;
 import com.solace.messaging.resources.Topic;
 import com.solace.messaging.resources.Queue;
 import com.solace.messaging.resources.TopicSubscription;
+import com.solace.messaging.util.LifecycleControl.TerminationEvent;
+import com.solace.messaging.util.LifecycleControl.TerminationNotificationListener;
+import com.solacesystems.jcsmp.DeliveryMode;
+import com.solacesystems.jcsmp.JCSMPException;
+import com.solacesystems.jcsmp.JCSMPFactory;
+import com.solacesystems.jcsmp.JCSMPProperties;
+import com.solacesystems.jcsmp.JCSMPSession;
+import com.solacesystems.jcsmp.JCSMPStreamingPublishCorrelatingEventHandler;
+import com.solacesystems.jcsmp.JCSMPStreamingPublishEventHandler;
+import com.solacesystems.jcsmp.TextMessage;
+import com.solacesystems.jcsmp.XMLMessageProducer;
+
+import shaded.com.oracle.oci.javasdk.io.vavr.control.Try;
+
 import com.solace.messaging.config.SolaceProperties.ServiceProperties;
+import com.solace.messaging.publisher.DirectMessagePublisher.FailedPublishEvent;
 import com.solace.messaging.publisher.DirectMessagePublisher.PublishFailureListener;
 
 import com.solace.messaging.receiver.DirectMessageReceiver;
@@ -42,16 +58,20 @@ import com.oracle.bmc.queue.model.PutMessagesDetails;
 import com.oracle.bmc.queue.requests.PutMessagesRequest;
 import com.oracle.bmc.queue.responses.PutMessagesResponse;
 
+import org.bouncycastle.pqc.crypto.MessageSigner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class OCISolaceConnector extends Object {
 
+  private static final boolean EXITONERR = true;
+
   private static final String CONNECTIONTYPE = "Type";
   private static Logger logger = LoggerFactory.getLogger(OCISolaceConnector.class);
 
   static boolean multiPass = false;
-  static ConnectionsMap connections = new ConnectionsMap();
+  static ConnectionsMap myConnectionMappings = new ConnectionsMap();
+  static HashMap<String, ConnectionBase> myIndividualConnections = new HashMap<String, ConnectionBase>();
 
   public static void prettyPropertiesToString(Properties props, String propDescription) {
     if (props == null) {
@@ -91,6 +111,10 @@ public class OCISolaceConnector extends Object {
     public void sendMessages(MessageList messages);
 
     public void printProperties();
+
+    public void setTarget(ConnectionBase target);
+
+    public void shutdown();
 
   }
 
@@ -146,6 +170,15 @@ public class OCISolaceConnector extends Object {
     public void printProperties() {
       prettyPropertiesToString(props, getConnectionName());
     }
+
+    public void setTarget(ConnectionBase target) {
+      logger.debug(TYPENAME + " setTarget " + target.getConnectionName());
+    }
+
+    public void shutdown() {
+      logger.debug(TYPENAME + " shutdown");
+    }
+
   }
 
   /*
@@ -211,6 +244,10 @@ public class OCISolaceConnector extends Object {
           provider = new ConfigFileAuthenticationDetailsProvider(configFile);
         } catch (Exception err) {
           logger.error("Caught error trying to get connection properties for OCI\n" + err.getMessage());
+          err.printStackTrace();
+          if (EXITONERR) {
+            System.exit(1);
+          }
         }
       } else {
         provider = SimpleAuthenticationDetailsProvider.builder()
@@ -262,13 +299,51 @@ public class OCISolaceConnector extends Object {
     public void printProperties() {
       prettyPropertiesToString(props, getConnectionName());
     }
+
+    public void setTarget(ConnectionBase target) {
+      logger.debug(TYPENAME + " setTarget " + target.getConnectionName());
+    }
+
+    public void shutdown() {
+      logger.debug(TYPENAME + " shutdown");
+    }
+
   }
 
-  static class ErrorHandler implements DirectMessagePublisher.PublishFailureListener {
+  static class SolaceHandler implements PublishFailureListener, TerminationNotificationListener,
+      JCSMPStreamingPublishCorrelatingEventHandler {
 
     @Override
-    public void onFailedPublish(DirectMessagePublisher.FailedPublishEvent e) {
-      logger.warn("Producer received error: " + e.toString());
+    public void onFailedPublish(FailedPublishEvent e) {
+      logger.warn("Producer received error: " + e.getMessage());
+    }
+
+    @Override
+    public void onTermination(TerminationEvent e) {
+      logger.error("receiving termination event: " + e.getMessage());
+
+    }
+
+    @Override
+    public void responseReceived(String messageID) {
+      System.out.println("Producer received response for msg: " + messageID);
+    }
+
+    @Override
+    public void handleError(String messageID, JCSMPException e, long timestamp) {
+      logger.warn("Producer received error for msg: %s@%s - %s%n", messageID, timestamp, e);
+    }
+
+    @Override
+    public void handleErrorEx(Object arg0, JCSMPException arg1, long arg2) {
+      logger.warn("Producer received error: " + arg1.getMessage());
+
+    }
+
+    @Override
+    public void responseReceivedEx(Object arg0) {
+      logger.warn("Producer received response: " + arg0.toString());
+
     }
   }
 
@@ -285,7 +360,7 @@ public class OCISolaceConnector extends Object {
     private static final String ADDR = "SOLACE_ADDR";
     private static final String PORT = "SOLACE_PORT";
     private static final String VPN = "SOLACE_VPN";
-    private static final String CLIENTNAME = "SOLACE_CLIENTNAME";
+    private static final String CLIENTNAME = "CLIENT_NAME";
 
     private static final String[] SOLACEPROPPARAMS = new String[] { ADDR,
         PORT,
@@ -296,14 +371,19 @@ public class OCISolaceConnector extends Object {
         ServiceProperties.RECEIVER_DIRECT_SUBSCRIPTION_REAPPLY,
         TOPICNAME,
         CLIENTNAME,
-        ServiceProperties.VPN_NAME,
+        VPN,
         CONNECTIONTYPE };
 
     private Properties props = null;
+    private boolean isPublisher = true;
     private MessagingService messagingService = null;
-    private DirectMessagePublisher publisher = null;
-    DirectMessageReceiver receiver = null;
-    MessageHandler messageHandler = null;
+    // private MessagePublisher publisher = null;
+    private PersistentMessagePublisher publisher = null;
+    private DirectMessageReceiver receiver = null;
+    private MessageHandler messageHandler = null;
+    private ConnectionBase target = null;
+
+    private JCSMPProperties solaceProps = new JCSMPProperties();
 
     static String[] getPropParams() {
       return SOLACEPROPPARAMS;
@@ -312,8 +392,9 @@ public class OCISolaceConnector extends Object {
     /*
      * Stores the properties provided
      */
-    public SolaceConnection(Properties properties) {
+    public SolaceConnection(Properties properties, boolean isPublisher) {
       props = properties;
+      this.isPublisher = isPublisher;
     }
 
     /*
@@ -325,10 +406,35 @@ public class OCISolaceConnector extends Object {
       return ((publisher != null) && (messagingService != null));
     }
 
-    void setupHandler() {
-      logger.debug("Setting up Solace message handler");
+    void setupPublisher() {
+      logger.info("Setting up Solace message publisher");
+
+      publisher = messagingService.createPersistentMessagePublisherBuilder().build();
+
+      publisher.setTerminationNotificationListener(new SolaceHandler());
+      // setPublishFailureListener(new ErrorHandler());
+      publisher.start();
+
+      while (!publisher.isReady()) {
+        final int sleepTime = 5000;
+        int sleepCtr = 0;
+        logger.info("Waiting on Solace publisher to be ready");
+        try {
+          sleepCtr++;
+          Thread.sleep(5000);
+        } catch (InterruptedException interrupt) {
+          logger.warn(
+              "Disturbed waiting for publisher to be ready - slept for " + (sleepCtr * sleepTime) / 1000 + " seconds");
+        }
+      }
+      logger.debug("Solace publisher is ready");
+    }
+
+    void setupReceiver() {
+      logger.info("Setting up Solace message receiver");
       if (receiver == null) {
-        TopicSubscription topic = TopicSubscription.of(props.getProperty(TOPICNAME));
+        // TopicSubscription topic = TopicSubscription.of(props.getProperty(TOPICNAME));
+        TopicSubscription topic = TopicSubscription.of("*");
         receiver = messagingService.createDirectMessageReceiverBuilder()
             .withSubscriptions(topic).build().start();
       } else {
@@ -339,7 +445,13 @@ public class OCISolaceConnector extends Object {
       }
       if (messageHandler == null) {
         messageHandler = (inboundMessage) -> {
-          logger.info("message hander read >>" + inboundMessage.dump());
+          String message = inboundMessage.dump();
+          if (target != null) {
+            MessageList messages = new MessageList();
+            messages.add(message);
+            target.sendMessages(messages);
+          }
+          logger.info("message hander read >>" + message);
         };
       }
     }
@@ -349,7 +461,7 @@ public class OCISolaceConnector extends Object {
      * configuration is taken from the properties object
      */
     public void connect() {
-      logger.debug("Building connection for Solace");
+      logger.info("Building connection for Solace");
 
       if (props.getProperty(TransportLayerProperties.HOST) == null) {
         String address = props.getProperty(ADDR) + ":" + props.getProperty(PORT, DEFAULTPORT);
@@ -362,22 +474,26 @@ public class OCISolaceConnector extends Object {
       if (props.getProperty(ServiceProperties.VPN_NAME) == null) {
         props.setProperty(ServiceProperties.VPN_NAME, props.getProperty(VPN, "default"));
       }
-      prettyPropertiesToString(props, getConnectionName());
 
-      props.setProperty(ServiceProperties.RECEIVER_DIRECT_SUBSCRIPTION_REAPPLY, "true");
+      if (props.getProperty(ServiceProperties.RECEIVER_DIRECT_SUBSCRIPTION_REAPPLY) == null) {
+        props.setProperty(ServiceProperties.RECEIVER_DIRECT_SUBSCRIPTION_REAPPLY, "true");
+      }
+
       String clientname = props.getProperty(CLIENTNAME, "default");
+
+      prettyPropertiesToString(props, getConnectionName());
 
       messagingService = MessagingService.builder(ConfigurationProfile.V1).fromProperties(props)
           .build(clientname).connect();
-      logger.debug("Building message service for Solace completed");
+      logger.debug("Building message service for Solace completed - app id is " + messagingService.getApplicationId()
+          + "; is connected " + messagingService.isConnected());
 
-      publisher = messagingService.createDirectMessagePublisherBuilder()
-          .onBackPressureWait(1).build();
+      if (isPublisher) {
+        setupPublisher();
+      } else {
+        setupReceiver();
+      }
 
-      publisher.setPublishFailureListener(new ErrorHandler());
-      publisher.start();
-
-      setupHandler();
       logger.debug("Building connection for Solace completed");
     }
 
@@ -398,7 +514,7 @@ public class OCISolaceConnector extends Object {
         logger.warn("reconnecting");
         messagingService.connect();
       }
-      DirectMessageReceiver receiver = messagingService.createDirectMessageReceiverBuilder()
+      receiver = messagingService.createDirectMessageReceiverBuilder()
           .withSubscriptions(topic).build().start();
       logger.debug("receive created");
 
@@ -416,7 +532,8 @@ public class OCISolaceConnector extends Object {
     /*
      */
     public void sendMessages(MessageList messages) {
-      Topic topic = Topic.of(props.getProperty(TOPICNAME));
+      // Topic topic = Topic.of(props.getProperty(TOPICNAME));
+
       if (messages == null) {
         logger.warn("No messages to send");
         return;
@@ -430,8 +547,36 @@ public class OCISolaceConnector extends Object {
           logger.warn("Solace sendMessages needs to reconnect messagingService");
           messagingService.connect();
         }
-        OutboundMessage message = messagingService.messageBuilder().build(msg);
-        publisher.publish(message, topic);
+        // OutboundMessage message = messagingService.messageBuilder().build(msg);
+        try {
+          // publisher.(message);
+          // https://github.com/SolaceDev/solace-samples-java-jcsmp/blob/master/src/main/java/com/solace/samples/jcsmp/features/QueueProducer.java
+          solaceProps.setProperty(JCSMPProperties.HOST, props.getProperty(TransportLayerProperties.HOST));
+          solaceProps.setProperty(JCSMPProperties.AUTHENTICATION_SCHEME,
+              props.getProperty(AuthenticationProperties.SCHEME));
+          solaceProps.setProperty(JCSMPProperties.USERNAME,
+              props.getProperty(AuthenticationProperties.SCHEME_BASIC_USER_NAME));
+          solaceProps.setProperty(JCSMPProperties.PASSWORD,
+              props.getProperty(AuthenticationProperties.SCHEME_BASIC_PASSWORD));
+          solaceProps.setProperty(JCSMPProperties.VPN_NAME, props.getProperty(ServiceProperties.VPN_NAME));
+          logger.debug("Solace Props:\n" + solaceProps.toString());
+
+          JCSMPSession session = JCSMPFactory.onlyInstance().createSession(solaceProps);
+          TextMessage solaceMsg = JCSMPFactory.onlyInstance().createMessage(TextMessage.class);
+          solaceMsg.setDeliveryMode(DeliveryMode.PERSISTENT);
+          solaceMsg.setText(msg);
+          // Send message directly to the queue
+
+          session.connect();
+          XMLMessageProducer prod = session.getMessageProducer(new SolaceHandler());
+          String qName = props.getProperty(TOPICNAME);
+          final com.solacesystems.jcsmp.Queue queue = JCSMPFactory.onlyInstance().createQueue(qName);
+          prod.send(solaceMsg, queue);
+
+        } catch (Exception publishErr) {
+          logger.error("Problem with publishing message:" + publishErr.getMessage());
+          publishErr.printStackTrace();
+        }
       }
       logger.debug("Send done");
     }
@@ -439,6 +584,37 @@ public class OCISolaceConnector extends Object {
     public void printProperties() {
       prettyPropertiesToString(props, getConnectionName());
     }
+
+    public void setTarget(ConnectionBase target) {
+      this.target = target;
+      logger.debug(TYPENAME + " setTarget " + target.getConnectionName());
+    }
+
+    public void shutdown() {
+      logger.debug(TYPENAME + " shutdown for " + getConnectionName());
+      if (messagingService != null) {
+        logger.debug("Disconnecting messageService");
+        messagingService.disconnect();
+        messagingService = null;
+        logger.debug("Disconnected messageService");
+
+      }
+      // private MessagePublisher publisher = null;
+      if (publisher != null) {
+        logger.debug("Disconnecting publisher");
+        publisher.terminate(0);
+        publisher = null;
+        logger.debug("Disconnected publisher");
+      }
+      if (receiver != null) {
+        logger.debug("Disconnecting receiver");
+        receiver.terminate(0);
+        receiver = null;
+        logger.debug("Disconnected receiver");
+
+      }
+    }
+
   }
 
   /**
@@ -499,7 +675,7 @@ public class OCISolaceConnector extends Object {
    * @param prefix
    * @return ConnectionBase
    */
-  static ConnectionBase createConnection(Properties props, String prefix) {
+  static ConnectionBase createConnection(Properties props, String prefix, boolean isPublisher) {
     ConnectionBase instance = null;
     final String TYPETAG = "<NOT SET>";
     String connType = TYPETAG;
@@ -518,7 +694,7 @@ public class OCISolaceConnector extends Object {
         break;
 
       case SolaceConnection.TYPENAME:
-        instance = new SolaceConnection(props);
+        instance = new SolaceConnection(props, isPublisher);
         break;
 
       case SyntheticConnection.TYPENAME:
@@ -555,15 +731,18 @@ public class OCISolaceConnector extends Object {
     }
 
     public boolean isConnected() {
-      // logger.info("from null=" + (from == null) + " connected =" +
-      // from.connected() + "|| to null=" + (to == null) + " connected=" +
-      // to.connected());
+      logger.debug("from null=" + (from == null) + " connected =" +
+          from.connected() + "|| to null=" + (to == null) + " connected=" +
+          to.connected());
       return (from != null) && (to != null) && from.connected() && to.connected();
     }
 
     /*
     */
     public void connect() {
+      if ((to == null) || (from == null)) {
+        logger.warn("Missing a connection");
+      }
       if (to != null) {
         to.connect();
       }
@@ -645,11 +824,25 @@ public class OCISolaceConnector extends Object {
           String toPrefix = mapping.substring(separatorPos + 1);
           Properties fromProps = getProps(fromPrefix, getPropParams(allProps, fromPrefix), allProps);
           Properties toProps = getProps(toPrefix, getPropParams(allProps, toPrefix), allProps);
-          connections.put(mapping,
-              new ConnectionPair(createConnection(fromProps, fromPrefix), createConnection(toProps, toPrefix)));
+
+          ConnectionBase from = createConnection(fromProps, fromPrefix, true);
+          ConnectionBase to = createConnection(toProps, toPrefix, false);
+          if (from != null) {
+            myIndividualConnections.put(from.getConnectionName(), from);
+            from.setTarget(to);
+            // from.connect();
+          }
+          if (to != null) {
+            myIndividualConnections.put(to.getConnectionName(), to);
+            // to.connect();
+          }
+          myConnectionMappings.put(mapping, new ConnectionPair(from, to));
         } catch (NullPointerException err) {
           logger.error(err.getMessage());
           err.printStackTrace();
+          if (EXITONERR) {
+            System.exit(1);
+          }
         }
       }
     }
@@ -663,10 +856,10 @@ public class OCISolaceConnector extends Object {
    */
   private static void singlePass() {
     logger.info("Starting pass...");
-    Iterator<String> iter = connections.keySet().iterator();
+    Iterator<String> iter = myConnectionMappings.keySet().iterator();
 
     while (iter.hasNext()) {
-      ConnectionPair connection = connections.get(iter.next());
+      ConnectionPair connection = myConnectionMappings.get(iter.next());
       logger.info("Processing Connection: " + connection.getConnectionName());
 
       // if not connected then get connection
@@ -697,7 +890,32 @@ public class OCISolaceConnector extends Object {
       } catch (Exception err) {
         looping = false;
         logger.error("Caught error - " + err.getMessage());
+        err.printStackTrace();
+        if (EXITONERR) {
+          System.exit(1);
+        }
+
       }
+    }
+  }
+
+  private static void testConnections() {
+    logger.info("Starting connectiobn test...");
+    Iterator<String> iter = myIndividualConnections.keySet().iterator();
+
+    while (iter.hasNext()) {
+      String connectionName = iter.next();
+      ConnectionBase connection = myIndividualConnections.get(connectionName);
+      logger.info("\n\nProcessing Connection: " + connectionName);
+      connection.connect();
+      logger.info(connectionName + " connected");
+      MessageList messages = new MessageList();
+      messages.add("Hello world");
+      logger.info(connectionName + " about to send");
+      connection.sendMessages(messages);
+      logger.info(connectionName + " SENT");
+      connection.shutdown();
+      logger.info(connectionName + " DONE\n\n");
     }
   }
 
@@ -705,6 +923,7 @@ public class OCISolaceConnector extends Object {
    * @param args
    */
   public static void main(String[] args) {
+    logger.debug("Logging set as:" + logger.getClass().getName());
     getAllProps();
 
     // logger.info("Solace props:\n" +
@@ -712,15 +931,20 @@ public class OCISolaceConnector extends Object {
     // logger.info("OCI props:\n" +
     // listParams(OCIConnection.getPropParams()));
 
-    logger.info("/n/n System start processing ...");
-    try {
-      if (multiPass) {
-        multiPass();
-      } else {
-        singlePass();
+    boolean testConnections = true;
+    if (testConnections) {
+      testConnections();
+    } else {
+      logger.info("retrieved config ...");
+      try {
+        if (multiPass) {
+          multiPass();
+        } else {
+          singlePass();
+        }
+      } catch (RuntimeException err) {
+        logger.error("Caught err:" + err.getMessage());
       }
-    } catch (RuntimeException err) {
-      logger.error("Caught err:" + err.getMessage());
     }
 
   }
