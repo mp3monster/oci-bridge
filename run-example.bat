@@ -1,4 +1,5 @@
 echo off
+cls
 
 set isMultiPass=true
 set ConnectionList=Synthetic1-cloudSolace
@@ -8,11 +9,10 @@ REM set ConnectionList=Synthetic1-localSolace
 REM set ConnectionList=Synthetic1-Synthetic2
 REM set ConnectionList=localSolace-OCIDemoQueue, OCIDemoQueue-localSolace
 
-set localSolace.Type=Solace
-set OCIDemoQueue.Type=OCIQ
 set Synthetic1.Type=Synthetic
 set Synthetic2.Type=Synthetic
 
+set OCIDemoQueue.Type=OCIQ
 set OCIDemoQueue.OCI_QUEUEID=<add your OCI Queue OCID>
 set OCIDemoQueue.OCI_REGION=us-ashburn-1
 set OCIDemoQueue.OCI_AUTHFILE=oci.properties
@@ -22,6 +22,7 @@ REM set OCIDemoQueue.OCI_TENNANT_ID=XX
 REM set OCIDemoQueue.OCI_USERID=XX
 
 REM a local deployment of Solace broker e.g. using Docker
+set localSolace.Type=Solace
 set localSolace.SOLACE_ADDR=tcp:127.0.0.1
 set localSolace.SOLACE_PORT=55555
 set localSolace.solace.messaging.authentication.scheme=AUTHENTICATION_SCHEME_BASIC
@@ -107,6 +108,6 @@ call mvn package
 call mvn assembly:assembly -DdescriptorId=jar-with-dependencies 
 
 :run
-java -jar target/oci-solace-1.0-SNAPSHOT-jar-with-dependencies.jar
+java -Dorg.slf4j.simpleLogger.defaultLogLevel=info -jar target/oci-solace-1.0-SNAPSHOT-jar-with-dependencies.jar
 
 :eof
