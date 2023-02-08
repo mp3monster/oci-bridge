@@ -2,6 +2,8 @@ echo off
 cls
 
 set isMultiPass=true
+set Testing=true
+REM set set ListConnectorProps=false
 set ConnectionList=Synthetic1-cloudSolace
 REM set ConnectionList=OCIDemoQueue-localSolace
 REM set ConnectionList=Synthetic1-localSolace,localSolace-Synthetic2
