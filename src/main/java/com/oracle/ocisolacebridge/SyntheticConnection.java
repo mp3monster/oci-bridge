@@ -46,24 +46,21 @@ class SyntheticConnection extends ConnectionBase {
   }
 
   public String getConnectionName() {
-    logger.debug("get name for " + TYPENAME);
     return TYPENAME;
   }
 
   public void sendMessages(MessageList messages) {
     for (int msgCtr = 0; msgCtr < messages.size(); msgCtr++) {
-      logger.info("Synthetic received:" + messages.get(msgCtr));
+      logger.info("=======\nSynthetic received:\n" + messages.get(msgCtr) + "\n=======");
     }
   }
 
-  public void printProperties() {
-    BridgeCommons.prettyPropertiesToString(props, getConnectionName());
-  }
-
+  @Override
   public void setTarget(ConnectionBase target) {
     logger.debug(TYPENAME + " setTarget " + target.getConnectionName());
   }
 
+  @Override
   public void shutdown() {
     logger.debug(TYPENAME + " shutdown");
   }

@@ -141,8 +141,13 @@ public class OCISolaceConnector extends Object {
     }
 
     public boolean isConnected() {
-      logger.debug("from null=" + (from == null) + " connected =" +
-          from.connected() + "|| to null=" + (to == null) + " connected=" +
+      logger.debug("from null=" +
+          (from == null) +
+          " connected =" +
+          from.connected() +
+          "|| to null=" +
+          (to == null) +
+          " connected=" +
           to.connected());
       return (from != null) && (to != null) && from.connected() && to.connected();
     }
@@ -218,8 +223,7 @@ public class OCISolaceConnector extends Object {
    * Grab the environment properties as tease out each of the connection
    * constructs
    */
-  private static void getAllProps() {
-    Map allProps = System.getenv();
+  private static void getAllProps(Map allProps) {
     String propSetStr = (String) allProps.get("ConnectionList");
     logger.debug("Connections list=" + propSetStr);
 
@@ -235,8 +239,8 @@ public class OCISolaceConnector extends Object {
           Properties fromProps = getProps(fromPrefix, getPropParams(allProps, fromPrefix), allProps);
           Properties toProps = getProps(toPrefix, getPropParams(allProps, toPrefix), allProps);
 
-          ConnectionBase from = createConnection(fromProps, fromPrefix, true);
-          ConnectionBase to = createConnection(toProps, toPrefix, false);
+          ConnectionBase from = createConnection(fromProps, fromPrefix, false);
+          ConnectionBase to = createConnection(toProps, toPrefix, true);
           if (from != null) {
             myIndividualConnections.put(from.getConnectionName(), from);
             from.setTarget(to);
@@ -248,8 +252,7 @@ public class OCISolaceConnector extends Object {
           }
           myConnectionMappings.put(mapping, new ConnectionPair(from, to));
         } catch (NullPointerException err) {
-          logger.error(err.getMessage());
-          err.printStackTrace();
+          logger.error(err.getMessage() + "\nTrace is:\n" + BridgeCommons.exceptionToString(err));
           if (BridgeCommons.EXITONERR) {
             System.exit(1);
           }
@@ -257,8 +260,6 @@ public class OCISolaceConnector extends Object {
       }
     }
 
-    multiPass = ((String) allProps.getOrDefault("isMultiPass", "False")).equalsIgnoreCase("TRUE");
-    logger.debug("Is a multi-pass run -->" + multiPass);
   }
 
   /*
@@ -289,18 +290,18 @@ public class OCISolaceConnector extends Object {
   }
 
   private static void multiPass() {
+    int interPassDelay = 1000;
     boolean looping = true;
     logger.info("About to start multi-pass...");
 
     while (looping) {
       try {
         singlePass();
-        Thread.sleep(1000);
+        Thread.sleep(interPassDelay);
         logger.info(" ------------- \n\n");
       } catch (Exception err) {
         looping = false;
-        logger.error("Caught error - " + err.getMessage());
-        err.printStackTrace();
+        logger.error("Caught error - " + err.getMessage() + "\n" + BridgeCommons.exceptionToString(err));
         if (BridgeCommons.EXITONERR) {
           System.exit(1);
         }
@@ -310,13 +311,13 @@ public class OCISolaceConnector extends Object {
   }
 
   private static void testConnections() {
-    logger.info("Starting connectiobn test...");
+    logger.info("Starting connection test...");
     Iterator<String> iter = myIndividualConnections.keySet().iterator();
 
     while (iter.hasNext()) {
       String connectionName = iter.next();
       ConnectionBase connection = myIndividualConnections.get(connectionName);
-      logger.info("\n\nProcessing Connection: " + connectionName);
+      logger.info("Processing Connection: " + connectionName);
       connection.connect();
       logger.info(connectionName + " connected");
       MessageList messages = new MessageList();
@@ -325,7 +326,18 @@ public class OCISolaceConnector extends Object {
       connection.sendMessages(messages);
       logger.info(connectionName + " SENT");
       connection.shutdown();
-      logger.info(connectionName + " DONE\n\n");
+      logger.info(connectionName + " DONE");
+    }
+  }
+
+  static void listPropertiesForConnections() {
+    Iterator<String> iter = myIndividualConnections.keySet().iterator();
+    while (iter.hasNext()) {
+      String connectionName = iter.next();
+      ConnectionBase connection = myIndividualConnections.get(connectionName);
+      logger.info("Properties for connection " + connection.getConnectionName());
+      connection.printProperties();
+      logger.info("\n --", connectionName);
     }
   }
 
@@ -334,17 +346,21 @@ public class OCISolaceConnector extends Object {
    */
   public static void main(String[] args) {
     logger.debug("Logging set as:" + logger.getClass().getName());
-    getAllProps();
+    Map allProps = System.getenv();
+    boolean testConnections = ((String) allProps.getOrDefault("Testing", "False")).equalsIgnoreCase("True");
 
-    logger.info("Solace props:\n" +
-        listParams(SolaceConnection.getPropParams()));
-    // logger.info("OCI props:\n" +
-    // listParams(OCIConnection.getPropParams()));
+    getAllProps(allProps);
 
-    boolean testConnections = true;
+    if (((String) (allProps.getOrDefault("ListConnectorProps", "False"))).equalsIgnoreCase("True")) {
+      listPropertiesForConnections();
+    }
+
     if (testConnections) {
       testConnections();
     } else {
+      multiPass = ((String) allProps.getOrDefault("isMultiPass", "False")).equalsIgnoreCase("TRUE");
+      logger.debug("Is a multi-pass run -->" + multiPass);
+
       logger.info("retrieved config ...");
       try {
         if (multiPass) {

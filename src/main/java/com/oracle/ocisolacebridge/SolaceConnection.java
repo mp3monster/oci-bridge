@@ -1,12 +1,12 @@
 package com.oracle.ocisolacebridge;
 
+import java.util.ListIterator;
 import java.util.Properties;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.solace.messaging.MessagingService;
-import com.solace.messaging.config.SolaceProperties.AuthenticationProperties;
 import com.solace.messaging.config.SolaceProperties.ServiceProperties;
 import com.solace.messaging.publisher.PersistentMessagePublisher;
 import com.solace.messaging.publisher.DirectMessagePublisher.FailedPublishEvent;
@@ -17,21 +17,40 @@ import com.solace.messaging.receiver.MessageReceiver.MessageHandler;
 import com.solace.messaging.resources.TopicSubscription;
 import com.solace.messaging.util.LifecycleControl.TerminationEvent;
 import com.solace.messaging.util.LifecycleControl.TerminationNotificationListener;
+import com.solacesystems.jcsmp.BytesXMLMessage;
+import com.solacesystems.jcsmp.ConsumerFlowProperties;
 import com.solacesystems.jcsmp.DeliveryMode;
+import com.solacesystems.jcsmp.EndpointProperties;
+import com.solacesystems.jcsmp.FlowReceiver;
 import com.solacesystems.jcsmp.JCSMPException;
 import com.solacesystems.jcsmp.JCSMPFactory;
 import com.solacesystems.jcsmp.JCSMPProperties;
 import com.solacesystems.jcsmp.JCSMPSession;
 import com.solacesystems.jcsmp.JCSMPStreamingPublishCorrelatingEventHandler;
 import com.solacesystems.jcsmp.TextMessage;
+import com.solacesystems.jcsmp.XMLMessageListener;
 import com.solacesystems.jcsmp.XMLMessageProducer;
+
+import shaded.com.oracle.oci.javasdk.javassist.bytecode.Descriptor.Iterator;
 
 /*
    * This is the Solace implementation of the Connection base - allows us to
    * connect
    * and send to Solace or pull from Solace messages
+   * Illustration of queue use - https://github.com/SolaceDev/solace-samples-java-jcsmp/blob/master/src/main/java/com/solace/samples/jcsmp/features/QueueProducer.java
+
    */
 class SolaceConnection extends ConnectionBase {
+
+  /**
+   *
+   */
+  private static final String DEFAULTVPN = "default";
+
+  /**
+   *
+   */
+  private static final int DEFAULT_SLEEP = 5000;
 
   static class SolaceHandler implements PublishFailureListener, TerminationNotificationListener,
       JCSMPStreamingPublishCorrelatingEventHandler {
@@ -43,7 +62,7 @@ class SolaceConnection extends ConnectionBase {
 
     @Override
     public void onTermination(TerminationEvent e) {
-      logger.error("receiving termination event: " + e.getMessage());
+      logger.info("receiving termination event: " + e.getMessage());
 
     }
 
@@ -65,8 +84,49 @@ class SolaceConnection extends ConnectionBase {
 
     @Override
     public void responseReceivedEx(Object arg0) {
-      logger.warn("Producer received response: " + arg0.toString());
+      String logOut = "Producer received response: ";
+      if (arg0 != null) {
+        logOut += (arg0.toString());
+      } else {
+        logOut += (" empty param received");
+      }
+      logger.warn(logOut);
 
+    }
+  }
+
+  static class MessageReceiver implements XMLMessageListener {
+    ConnectionBase target = null;
+    String myName = "";
+
+    public MessageReceiver(ConnectionBase target, String myName) {
+      this.target = target;
+      this.myName = myName;
+    }
+
+    @Override
+    public void onReceive(BytesXMLMessage msg) {
+      MessageList messages = new MessageList();
+      if (msg instanceof TextMessage) {
+        String messageBody = ((TextMessage) msg).getText();
+        logger.debug(myName + " TextMessage received: '%s'%n", messageBody);
+        messages.add(messageBody);
+      } else {
+        logger.debug(myName + " - Message received.");
+      }
+      logger.debug(myName + " Message Dump:%n%s%n", msg.dump());
+
+      if (target != null) {
+        target.sendMessages(messages);
+        logger.debug(myName + " Passed messages to " + target.getConnectionName());
+      }
+
+      msg.ackMessage();
+    }
+
+    @Override
+    public void onException(JCSMPException e) {
+      logger.error(myName + " Consumer received exception: %s%n", e);
     }
   }
 
@@ -77,19 +137,15 @@ class SolaceConnection extends ConnectionBase {
   private static final String CLIENTNAME = "CLIENT_NAME";
   private static final String QUEUECONNECTION = "QUEUE";
   private static final String TOPICCONNECTION = "TOPIC";
-  private static final String MESSAGETYPE = "MESSAGETYPE";
+  private static final String MESSAGETYPE = "MESSAGE_TYPE";
 
   private static final String[] JCSMPPROPPARAMS = new String[] { JCSMPProperties.AUTHENTICATION_SCHEME,
-      JCSMPProperties.AUTHENTICATION_SCHEME,
       JCSMPProperties.HOST,
       JCSMPProperties.USERNAME,
       JCSMPProperties.VPN_NAME,
       JCSMPProperties.PASSWORD };
 
   private static final String[] SOLACEPROPPARAMS = new String[] {
-      AuthenticationProperties.SCHEME,
-      AuthenticationProperties.SCHEME_BASIC_USER_NAME,
-      AuthenticationProperties.SCHEME_BASIC_PASSWORD,
       ServiceProperties.RECEIVER_DIRECT_SUBSCRIPTION_REAPPLY,
       TOPICNAME,
       CLIENTNAME,
@@ -101,14 +157,22 @@ class SolaceConnection extends ConnectionBase {
       JCSMPProperties.VPN_NAME,
       JCSMPProperties.PASSWORD };
 
+  private enum ChannelType {
+    QUEUE, TOPIC, NOTSET
+  };
+
   private Properties props = null;
   private boolean isPublisher = true;
   private MessagingService messagingService = null;
-  // private MessagePublisher publisher = null;
   private PersistentMessagePublisher publisher = null;
+  private ChannelType channelType = ChannelType.NOTSET;
   private DirectMessageReceiver receiver = null;
   private MessageHandler messageHandler = null;
+
   private JCSMPSession session = null;
+  private com.solacesystems.jcsmp.Queue queue = null;
+  private XMLMessageProducer producer = null;
+  private FlowReceiver queueReceiver = null;
 
   private JCSMPProperties solaceProps = new JCSMPProperties();
 
@@ -123,6 +187,30 @@ class SolaceConnection extends ConnectionBase {
     super(TYPENAME);
     props = properties;
     this.isPublisher = isPublisher;
+    logger.debug("creating a solace, as a publisher " + isPublisher);
+  }
+
+  private String getTopicReceiverStatusSummary() {
+    String status = "";
+    status += "Receiver has been created=" + (receiver != null);
+    if (receiver != null) {
+      status += "\nReceiver is running =" + receiver.isRunning() +
+          "\nReceiver is terminating =" + receiver.isTerminating() +
+          "\nReceiver is terminated =" + receiver.isTerminated();
+    }
+    return status;
+  }
+
+  private String getQueueReceiverStatusSummary() {
+    String status = "";
+    status += "Queue Receiver has been created=" + (queueReceiver != null);
+    if (queueReceiver != null) {
+      status += "\nQ Receiver is closed =" + queueReceiver.isClosed() +
+          "\nsession created = " + (session != null) +
+          "\nproducer created =" + (producer != null) +
+          "\nQ receiver created =" + (queueReceiver != null);
+    }
+    return status;
   }
 
   /*
@@ -131,11 +219,80 @@ class SolaceConnection extends ConnectionBase {
    * @Returns: True when connected
    */
   public boolean connected() {
-    return ((publisher != null) && (messagingService != null));
+    boolean connected = false;
+    logger.debug("Checking connectivity for " + getConnectionName()
+        + " on channel " + channelType + " as publisher " + isPublisher);
+    switch (channelType) {
+      case QUEUE:
+        connected = ((session != null) && (!session.isClosed()));
+        if (!isPublisher && connected) {
+          connected = (queueReceiver != null) && (!queueReceiver.isClosed());
+        }
+        if (isPublisher && connected) {
+          connected = (producer != null) && (!producer.isClosed());
+        }
+
+        if (!connected) {
+          logger.info("Not connected Status=" + getQueueReceiverStatusSummary());
+        }
+        break;
+
+      case TOPIC:
+        connected = messageHandler != null;
+
+        if (!isPublisher && connected) {
+          connected = (receiver != null) && (receiver.isRunning()) && (!receiver.isTerminated())
+              && (!receiver.isTerminating());
+        }
+
+        if (!connected) {
+          logger.info("Not connected Status=" + getTopicReceiverStatusSummary());
+        }
+        break;
+
+      default:
+        connected = false;
+        logger.warn("Trying to test Solace connection when config not complete");
+    }
+
+    return connected;
   }
 
-  void setupPublisher() {
-    logger.info("Setting up Solace message publisher");
+  private void setupQueue(boolean publish) {
+    try {
+      session = JCSMPFactory.onlyInstance().createSession(solaceProps);
+      session.connect();
+      String qName = props.getProperty(TOPICNAME);
+      logger.debug("setting up for queue " + qName + " to publish " + publish);
+      queue = JCSMPFactory.onlyInstance().createQueue(qName);
+      if (publish) {
+        logger.debug(getConnectionName() + " - build queue producer");
+        producer = session.getMessageProducer(new SolaceHandler());
+      } else {
+        logger.debug(getConnectionName() + " build queue consumer");
+        final ConsumerFlowProperties flow_prop = new ConsumerFlowProperties();
+        flow_prop.setEndpoint(queue);
+        flow_prop.setAckMode(JCSMPProperties.SUPPORTED_MESSAGE_ACK_CLIENT);
+
+        EndpointProperties endpoint_props = new EndpointProperties();
+        endpoint_props.setAccessType(EndpointProperties.ACCESSTYPE_EXCLUSIVE);
+        logger.debug(getConnectionName() + " build queue about to set receiver");
+        queueReceiver = session.createFlow(new MessageReceiver(target, getConnectionName()), flow_prop, endpoint_props);
+        queueReceiver.start();
+
+      }
+    } catch (Exception setupErr) {
+      logger.error(getConnectionName()
+          + " Problem with setting up queue :" + setupErr.getMessage() + "\n"
+          + BridgeCommons.exceptionToString(setupErr));
+      session = null;
+      queue = null;
+      producer = null;
+    }
+  }
+
+  void setupTopicPublisher() {
+    logger.info("** TODOS setting up Solace Topic publisher");
 
     publisher = messagingService.createPersistentMessagePublisherBuilder().build();
 
@@ -149,7 +306,7 @@ class SolaceConnection extends ConnectionBase {
       logger.info("Waiting on Solace publisher to be ready");
       try {
         sleepCtr++;
-        Thread.sleep(5000);
+        Thread.sleep(DEFAULT_SLEEP);
       } catch (InterruptedException interrupt) {
         logger.warn(
             "Disturbed waiting for publisher to be ready - slept for " + (sleepCtr * sleepTime) / 1000 + " seconds");
@@ -158,8 +315,8 @@ class SolaceConnection extends ConnectionBase {
     logger.debug("Solace publisher is ready");
   }
 
-  void setupReceiver() {
-    logger.info("Setting up Solace message receiver");
+  void setupTopicReceiver() {
+    logger.info("** TODOS setting up Solace Topic receiver");
     if (receiver == null) {
       // TopicSubscription topic = TopicSubscription.of(props.getProperty(TOPICNAME));
       if (messagingService != null) {
@@ -203,7 +360,7 @@ class SolaceConnection extends ConnectionBase {
 
     if (props.getProperty(JCSMPProperties.VPN_NAME) == null) {
       props.setProperty(
-          JCSMPProperties.VPN_NAME, "default");
+          JCSMPProperties.VPN_NAME, DEFAULTVPN);
       logger.warn("Setting " + JCSMPProperties.VPN_NAME + "to default");
     }
     /*
@@ -220,21 +377,26 @@ class SolaceConnection extends ConnectionBase {
       logger.debug("Mapped " + JCSMPPROPPARAMS[jcsmpPropsIdx] + " to " + value);
     }
 
-    String clientname = props.getProperty(CLIENTNAME, "default");
+    String clientname = props.getProperty(CLIENTNAME, DEFAULTVPN);
 
-    // prettyPropertiesToString(props, getConnectionName());
+    switch (props.getProperty(MESSAGETYPE, "NOT-SET").toUpperCase()) {
+      case QUEUECONNECTION:
+        channelType = ChannelType.QUEUE;
+        setupQueue(isPublisher);
+        break;
 
-    // messagingService =
-    // MessagingService.builder(ConfigurationProfile.V1).fromProperties(props)
-    // .build(clientname).connect();
-    // logger.debug("Building message service for Solace completed - app id is " +
-    // messagingService.getApplicationId()
-    // + "; is connected " + messagingService.isConnected());
+      case TOPICCONNECTION:
+        channelType = ChannelType.TOPIC;
+        if (isPublisher) {
+          setupTopicPublisher();
+        } else {
+          setupTopicReceiver();
+        }
+        break;
 
-    if (isPublisher) {
-      setupPublisher();
-    } else {
-      setupReceiver();
+      default:
+        channelType = ChannelType.NOTSET;
+        logger.error("Unknown connection type for Solace connection");
     }
 
     logger.debug("Building connection for Solace completed");
@@ -251,95 +413,109 @@ class SolaceConnection extends ConnectionBase {
   public MessageList getMessages() {
     logger.debug("Solace get messages");
     MessageList messages = new MessageList();
-    TopicSubscription topic = TopicSubscription.of(props.getProperty(TOPICNAME));
-
-    if (!messagingService.isConnected()) {
-      logger.warn("reconnecting");
-      messagingService.connect();
-    }
-    receiver = messagingService.createDirectMessageReceiverBuilder()
-        .withSubscriptions(topic).build().start();
-    logger.debug("receive created");
-
-    InboundMessage message = receiver.receiveMessage(1);
-    if (message != null) {
-      String recdMessage = message.dump();
-      logger.info("message is:" + recdMessage);
-      messages.add(recdMessage);
-    } else {
-      logger.warn("null message object");
-    }
+    /*
+     * TopicSubscription topic = TopicSubscription.of(props.getProperty(TOPICNAME));
+     * 
+     * if (!messagingService.isConnected()) {
+     * logger.warn("reconnecting");
+     * messagingService.connect();
+     * }
+     * receiver = messagingService.createDirectMessageReceiverBuilder()
+     * .withSubscriptions(topic).build().start();
+     * logger.debug("receive created");
+     * 
+     * InboundMessage message = receiver.receiveMessage(1);
+     * if (message != null) {
+     * String recdMessage = message.dump();
+     * logger.info("message is:" + recdMessage);
+     * messages.add(recdMessage);
+     * } else {
+     * logger.warn("null message object");
+     * }
+     */
     return messages;
   }
 
   public void sendMessages(MessageList messages) {
-    if ((messages == null) || (messages.size() == 0)) {
+    if ((messages == null) || (messages.isEmpty())) {
       logger.warn("No messages to send");
       return;
     } else {
       logger.info("Sending to Solace " + messages.size() + " messages on " + props.getProperty(TOPICNAME));
     }
 
-    String msgType = props.getProperty(MESSAGETYPE, TOPICCONNECTION).toUpperCase();
-    switch (msgType) {
-      case QUEUECONNECTION:
+    switch (channelType) {
+      case QUEUE:
         sendQueueMessages(messages);
         break;
 
-      case TOPICCONNECTION:
+      case TOPIC:
         sendTopicMessages(messages);
         break;
 
       default:
-        logger.error("Unknown message type for Solace - " + msgType);
+        logger.error("Unknown message type for Solace - " + channelType);
     }
   }
 
   private void sendTopicMessages(MessageList messages) {
-    logger.warn("Sending to topic not implemented yet");
+    logger.warn("**** Sending to topic not implemented yet");
+    if (messagingService == null) {
+      logger.error("messagingService not available");
+      return;
+    }
+    if (!messagingService.isConnected()) {
+      logger.warn("Solace sendMessages needs to reconnect messagingService");
+      messagingService.connect();
+    }
+    ListIterator messageIter = messages.listIterator();
+    while (messageIter.hasNext()) {
+      String msg = (String) messageIter.next() + " to " + getConnectionName();
+      logger.info("**TODO implement send of message: " + msg);
+    }
     // Topic topic = Topic.of(props.getProperty(TOPICNAME));
   }
 
   /*
    */
   private void sendQueueMessages(MessageList messages) {
+    if (!connected()) {
+      logger.warn(getConnectionName() + " sending messages - but need to connect");
+      connect();
+    }
+
     for (int msgIdx = 0; msgIdx < messages.size(); msgIdx++) {
       String msg = messages.get(msgIdx);
       logger.info("sending:" + msg);
 
-      if (!messagingService.isConnected()) {
-        logger.warn("Solace sendMessages needs to reconnect messagingService");
-        messagingService.connect();
-      }
       try {
-        // https://github.com/SolaceDev/solace-samples-java-jcsmp/blob/master/src/main/java/com/solace/samples/jcsmp/features/QueueProducer.java
 
-        if ((session == null) || (session.isClosed())) {
-          session = JCSMPFactory.onlyInstance().createSession(solaceProps);
-        }
+        /*
+         * if ((session == null) || (session.isClosed())) {
+         * logger.warn("Send Solace Queue message - but not yet connected");
+         * setupQueue(isPublisher);
+         * }
+         */
 
         TextMessage solaceMsg = JCSMPFactory.onlyInstance().createMessage(TextMessage.class);
-
         solaceMsg.setDeliveryMode(DeliveryMode.PERSISTENT);
         solaceMsg.setText(msg);
-        // Send message directly to the queue
-
-        session.connect();
-        XMLMessageProducer prod = session.getMessageProducer(new SolaceHandler());
-        String qName = props.getProperty(TOPICNAME);
-        final com.solacesystems.jcsmp.Queue queue = JCSMPFactory.onlyInstance().createQueue(qName);
-        prod.send(solaceMsg, queue);
+        if (producer != null) {
+          producer.send(solaceMsg, queue);
+        } else {
+          logger.warn(getConnectionName() + " cant send message - producer not created");
+        }
 
       } catch (Exception publishErr) {
-        logger.error("Problem with publishing message:" + publishErr.getMessage());
-        publishErr.printStackTrace();
+        logger.error("Problem with publishing message:" + publishErr.getMessage() + "\n"
+            + BridgeCommons.exceptionToString(publishErr));
       }
     }
     logger.debug("Send done");
   }
 
   public void printProperties() {
-    BridgeCommons.prettyPropertiesToString(props, getConnectionName());
+    logger.info(BridgeCommons.prettyPropertiesToString(props, getConnectionName(), "\n"));
   }
 
   public void setTarget(ConnectionBase target) {
@@ -348,13 +524,12 @@ class SolaceConnection extends ConnectionBase {
   }
 
   public void shutdown() {
-    logger.debug(TYPENAME + " shutdown for " + getConnectionName());
+    logger.info(TYPENAME + " shutdown for " + getConnectionName());
     if (messagingService != null) {
       logger.debug("Disconnecting messageService");
       messagingService.disconnect();
       messagingService = null;
       logger.debug("Disconnected messageService");
-
     }
     // private MessagePublisher publisher = null;
     if (publisher != null) {
@@ -368,7 +543,21 @@ class SolaceConnection extends ConnectionBase {
       receiver.terminate(0);
       receiver = null;
       logger.debug("Disconnected receiver");
+    }
 
+    if (session != null) {
+      session.closeSession();
+      session = null;
+    }
+
+    if (producer != null) {
+      producer.close();
+      producer = null;
+    }
+
+    if (queueReceiver != null) {
+      queueReceiver.close();
+      queueReceiver = null;
     }
   }
 

@@ -34,7 +34,7 @@ abstract class ConnectionBase {
   }
 
   public void printProperties() {
-    BridgeCommons.prettyPropertiesToString(props, getConnectionName());
+    logger.info(BridgeCommons.prettyPropertiesToString(props, getConnectionName(), "\n"));
   }
 
   public void setTarget(ConnectionBase target) {
