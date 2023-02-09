@@ -9,23 +9,26 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class BridgeCommons {
-  /**
-   *
-   */
+
   private static final String TRUE = "True";
-  /**
-   *
-   */
   private static final String FALSE = "False";
-  /**
-   *
-   */
+
   private static final String TESTING = "Testing";
   static final String CONNECTIONTYPE = "Type";
   static final boolean EXITONERR = System.getProperty(TESTING, FALSE).equalsIgnoreCase(TRUE);
 
   private static Logger logger = LoggerFactory.getLogger(OCISolaceConnector.class);
 
+  /**
+   * Takes the properties object and returns a string with the properties on
+   * separate lines.
+   * Wrapped with a prefix and post fix
+   * 
+   * @param props
+   * @param propDescription
+   * @param postfix
+   * @return String
+   */
   public static String prettyPropertiesToString(Properties props, String propDescription, String postfix) {
     String output = "";
     if (props == null) {

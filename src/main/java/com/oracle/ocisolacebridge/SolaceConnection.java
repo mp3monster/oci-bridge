@@ -176,6 +176,9 @@ class SolaceConnection extends ConnectionBase {
 
   private JCSMPProperties solaceProps = new JCSMPProperties();
 
+  /**
+   * @return String[]
+   */
   static String[] getPropParams() {
     return SOLACEPROPPARAMS;
   }

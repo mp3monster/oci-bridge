@@ -219,6 +219,9 @@ public class OCISolaceConnector extends Object {
     return props;
   }
 
+  /**
+   * @param allProps
+   */
   /*
    * Grab the environment properties as tease out each of the connection
    * constructs

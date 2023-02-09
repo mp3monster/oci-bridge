@@ -37,6 +37,9 @@ abstract class ConnectionBase {
     logger.info(BridgeCommons.prettyPropertiesToString(props, getConnectionName(), "\n"));
   }
 
+  /**
+   * @param target
+   */
   public void setTarget(ConnectionBase target) {
     logger.debug(connectionTypeName + " setTarget " + target.getConnectionName());
   }

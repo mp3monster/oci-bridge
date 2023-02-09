@@ -27,6 +27,9 @@ class SyntheticConnection extends ConnectionBase {
     logger.info("Synthetic set as connected");
   }
 
+  /**
+   * @return String[]
+   */
   static String[] getPropParams() {
     String[] props = { BridgeCommons.CONNECTIONTYPE };
     return props;
