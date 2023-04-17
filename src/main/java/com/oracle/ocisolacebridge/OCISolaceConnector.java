@@ -18,6 +18,13 @@ import org.slf4j.LoggerFactory;
 
 public class OCISolaceConnector extends Object {
 
+  private static final String LIST_CONNECTOR_PROPS = "ListConnectorProps";
+  private static final String IS_MULTI_PASS = "isMultiPass";
+  private static final String TESTING = "Testing";
+  private static final String FALSE_STR = "False";
+  private static final String TRUE_STR = "True";
+  private static final String CONNECTION_LIST = "ConnectionList";
+
   private static Logger logger = LoggerFactory.getLogger(OCISolaceConnector.class);
 
   static boolean multiPass = false;
@@ -227,7 +234,7 @@ public class OCISolaceConnector extends Object {
    * constructs
    */
   private static void getAllProps(Map allProps) {
-    String propSetStr = (String) allProps.get("ConnectionList");
+    String propSetStr = (String) allProps.get(CONNECTION_LIST);
     logger.debug("Connections list=" + propSetStr);
 
     // retrieve the props-pairing
@@ -350,18 +357,18 @@ public class OCISolaceConnector extends Object {
   public static void main(String[] args) {
     logger.debug("Logging set as:" + logger.getClass().getName());
     Map allProps = System.getenv();
-    boolean testConnections = ((String) allProps.getOrDefault("Testing", "False")).equalsIgnoreCase("True");
+    boolean testConnections = ((String) allProps.getOrDefault(TESTING, FALSE_STR)).equalsIgnoreCase(TRUE_STR);
 
     getAllProps(allProps);
 
-    if (((String) (allProps.getOrDefault("ListConnectorProps", "False"))).equalsIgnoreCase("True")) {
+    if (((String) (allProps.getOrDefault(LIST_CONNECTOR_PROPS, FALSE_STR))).equalsIgnoreCase(TRUE_STR)) {
       listPropertiesForConnections();
     }
 
     if (testConnections) {
       testConnections();
     } else {
-      multiPass = ((String) allProps.getOrDefault("isMultiPass", "False")).equalsIgnoreCase("TRUE");
+      multiPass = ((String) allProps.getOrDefault(IS_MULTI_PASS, FALSE_STR)).equalsIgnoreCase(TRUE_STR);
       logger.debug("Is a multi-pass run -->" + multiPass);
 
       logger.info("retrieved config ...");
