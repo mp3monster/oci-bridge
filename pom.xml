@@ -97,6 +97,13 @@ http://maven.apache.org/xsd/maven-4.0.0.xsd">
 			<optional>false</optional>
 		</dependency>
 
+    <dependency>
+			<groupId>com.oracle.oci.sdk</groupId>
+			<artifactId>oci-java-sdk-common-httpclient-jersey</artifactId>
+			<version>${oci-java-sdk-version}</version>
+			<optional>false</optional>
+		</dependency>
+
 		<dependency>
 			<groupId>com.oracle.oci.sdk</groupId>
 			<artifactId>oci-java-sdk-identity</artifactId>
