@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oci-solace-bridge
+  labels:
+    purpose: oci-solace-bridge
+spec:
+  containers:
+    - name: oci-solace-bridge
+      image: gcr.io/google-samples/node-hello:1.0
+      env:
+        - name: isMultiPass
+          value: "true"
+        - name: Testing
+          value: "false"
+        - name: ListConnectorProps
+          value: "true"
+        - name: ConnectionList
+          value: "Synthetic1-OCIQueue, OCIQueue-cloudSolace"
+
+        - name: Synthetic1.Type
+          value: "Synthetic"
+        - name: OCIQueue.Type
+          value: "OCIQUEUE"
+        - name: OCIQueue.OCI_USERID
+          value: "xxxx"
+        - name: OCIQueue.OCI_TENANT_ID
+          value: "xxxx"
+        - name: OCIQueue.OCI_FINGERPRINT
+          value: "xxxx"
+#        - name: OCIQueue.OCI_PORT
+#          value: "xxxx"
+        - name: OCIQueue.OCI_REGION
+          value: "us-ashburn-1"
+        - name: OCIQueue.OCI_QUEUEID
+          value: "xxx"
+        - name: OCIQueue.POLLDURATIONSECS
+          value: "5"
+        - name: OCIQueue.QUEUENAME
+          value: "pw-demo-queue"
+
+        - name: cloudSolace.Type
+          value: "Solace"
+        - name: cloudSolace.SOLACE_PORT
+          value: "55443"
+        - name: cloudSolace.host
+          value: "xxx"
+        - name: cloudSolace.MESSAGE_TYPE
+          value: "queue"
+        - name: cloudSolace.solace.messaging.authentication.scheme
+          value: "AUTHENTICATION_SCHEME_BASIC"
+        - name: cloudSolace.username
+          value: "solace-cloud-client"
+        - name: cloudSolace.password
+          value: "xxx"
+        - name: cloudSolace.SOLACE_TOPICNAME
+          value: "testTopic"
+        - name: cloudSolace.vpn_name
+          value: "demo"

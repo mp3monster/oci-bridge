@@ -1,0 +1,58 @@
+# Copyright(c) 2022, Oracle and / or its affiliates.
+# All rights reserved. The Universal Permissive License(UPL), Version 1.0 as shown at http: // oss.oracle.com/licenses/upl
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oci-solace-bdg-deploy
+  labels:
+    app: oci-solace-bdg
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oci-solace-bdg
+  template:
+    metadata:
+      labels:
+        app: oci-solace-bdg
+    spec:
+      containers:
+        - name: oci-solace-bdg
+          #image: oci-solace-bdg:latest
+          #image: docker.io/library/oci-solace-bdg:latest
+          image: iad.ocir.io/ociobenablement/oci-solace-bdg:latest
+          # ToDo Need to make this configurable OR push resources to a universal repo like Docker or GitHub
+
+          # ToDo The ports are just a direct match to the Solace options. This can be simplified
+          ports:
+            - containerPort: 8080
+              name: bdg-tcp-semp
+            - containerPort: 1943
+              name: bdg-tls-semp
+            - containerPort: 2222
+              name: bdg-tcp-smfcomp
+            - containerPort: 55555
+              name: bdg-tls-smfcomp
+            - containerPort: 55003
+              name: bdg-tcp-smf
+            - containerPort: 55443
+              name: bdg-tls-smf
+            - containerPort: 55556
+              name: bdg-tls-smfrout
+            - containerPort: 1443
+              name: bdg-tls-web
+            - containerPort: 9000
+              name: bdg-tcp-rest
+            - containerPort: 9443
+              name: bdg-tls-rest
+            - containerPort: 5672
+              name: bdg-tcp-amqp
+            - containerPort: 5671
+              name: bdg-tls-amqp
+            - containerPort: 8883
+              name: bdg-tls-mqtt
+            - containerPort: 8000
+              name: bdg-tcp-mqtt
+          #      imagePullSecrets:
+          #        - name: ocirsecret
+          # ToDo: map credentials using secrets
