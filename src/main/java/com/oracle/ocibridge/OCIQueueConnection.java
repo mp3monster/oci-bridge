@@ -58,15 +58,45 @@ class OCIQueueConnection extends ConnectionBase {
       OCI_AUTHFILE,
       BridgeCommons.CONNECTIONTYPE };
 
+  private static final String[] OCIREQUIREDCREDPROPS = new String[] { OCI_FINGERPRINT, OCI_TENANT_ID, OCI_USERID };
+  private static final String[] OCIREQUIREDADDRESSPROPS = new String[] { OCI_REGION, OCI_QUEUEID };
+
   private QueueClient queueClient = null;
   private String queueId = null;
-  private String queueName = null;
 
   /**
    * @return String[]
    */
   static String[] getPropParams() {
     return OCIPROPPARAMS;
+  }
+
+  private static boolean checkPropsSet(String[] propList, Properties properties) {
+    boolean ok = true;
+    for (int propIdx = 0; propIdx < propList.length; propIdx++) {
+      if (properties.get(propList[propIdx]) == null) {
+        logger.warn("Expected configuration for " + propList[propIdx]);
+        return false;
+      }
+    }
+    return ok;
+  }
+
+  /*
+   * Make sure we have the necessary properties - if we don't have a connection
+   * file then need connection properties.
+   * Need properties to formulate the URL. Port can be defaulted
+   */
+  private static boolean checkProps(Properties properties) {
+    boolean ok = false;
+    if (properties.get(OCI_AUTHFILE) == null) {
+      ok = checkPropsSet(OCIREQUIREDCREDPROPS, properties) && checkPropsSet(
+          OCIREQUIREDADDRESSPROPS, properties);
+    } else {
+      ok = checkPropsSet(
+          OCIREQUIREDADDRESSPROPS, properties);
+    }
+    return ok;
   }
 
   private OCIQueueConnection() {
@@ -77,6 +107,8 @@ class OCIQueueConnection extends ConnectionBase {
   public OCIQueueConnection(Properties properties) {
     super(TYPENAME);
     props = properties;
+    checkProps(props);
+
   }
 
   public boolean connected() {
@@ -86,7 +118,7 @@ class OCIQueueConnection extends ConnectionBase {
   /*
    */
   public void connect() {
-    logger.debug("Building connection for OCI");
+    logger.debug("Building connection for OCI \n");
     AuthenticationDetailsProvider provider = null;
     ConfigFileReader.ConfigFile configFile = null;
 
@@ -118,7 +150,6 @@ class OCIQueueConnection extends ConnectionBase {
     endpoint = ENDPOINTPREFIX + props.getProperty(OCI_REGION) + ENDPOINTPOSTFIX;
     queueClient.setEndpoint(endpoint);
     queueId = props.getProperty(OCI_QUEUEID);
-    queueName = props.getProperty(QUEUENAME, queueId);
 
     logger.info("OCI connection done");
   }
@@ -190,7 +221,11 @@ class OCIQueueConnection extends ConnectionBase {
   }
 
   public String getConnectionName() {
-    return "OCI:" + queueName;
+    String name = props.getProperty(QUEUENAME);
+    if (name == null) {
+      name = props.getProperty(OCI_QUEUEID);
+    }
+    return "OCI:" + name;
   }
 
   public void sendMessages(MessageList messages) {
