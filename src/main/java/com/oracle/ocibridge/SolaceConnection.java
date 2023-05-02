@@ -31,8 +31,6 @@ import com.solacesystems.jcsmp.TextMessage;
 import com.solacesystems.jcsmp.XMLMessageListener;
 import com.solacesystems.jcsmp.XMLMessageProducer;
 
-//import com.oracle.oci.javasdk.javassist.bytecode.Descriptor.Iterator;
-
 /*
    * This is the Solace implementation of the Connection base - allows us to
    * connect

@@ -20,6 +20,10 @@ public class BridgeCommons {
   static final String CONNECTIONTYPE = "Type";
   static final boolean EXITONERR = System.getProperty(TESTING, FALSE).equalsIgnoreCase(TRUE);
 
+  private BridgeCommons() {
+    logger.warn("Private constructor invoked - not expected");
+  }
+
   /**
    * separator between the connection name and the relevant property
    */

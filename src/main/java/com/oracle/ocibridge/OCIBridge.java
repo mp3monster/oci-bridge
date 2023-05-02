@@ -16,26 +16,6 @@ import java.util.Iterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.solace.messaging.MessagingService;
-import com.solace.messaging.config.SolaceConstants.AuthenticationConstants;
-import com.solace.messaging.config.SolaceProperties.AuthenticationProperties;
-import com.solace.messaging.config.SolaceProperties.TransportLayerProperties;
-import com.solace.messaging.config.profile.ConfigurationProfile;
-import com.solace.messaging.publisher.DirectMessagePublisher;
-import com.solace.messaging.publisher.OutboundMessage;
-import com.solace.messaging.resources.Topic;
-
-import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
-import com.oracle.bmc.auth.AuthenticationDetailsProvider;
-import com.oracle.bmc.ConfigFileReader;
-import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider;
-import com.oracle.bmc.Region;
-import com.oracle.bmc.queue.model.PutMessagesDetailsEntry;
-import com.oracle.bmc.queue.QueueClient;
-import com.oracle.bmc.queue.model.PutMessagesDetails;
-import com.oracle.bmc.queue.requests.PutMessagesRequest;
-import com.oracle.bmc.queue.responses.PutMessagesResponse;
-
 public class OCIBridge extends Object {
 
   /**
@@ -272,7 +252,7 @@ public class OCIBridge extends Object {
       logger.error("Not initialized with props");
     }
     logger.debug("getAllProps is " + IS_MULTI_PASS + " =" + allProps.get(IS_MULTI_PASS));
-    boolean multiPass = Boolean.valueOf((String) allProps.getOrDefault(IS_MULTI_PASS, MULTI_PASS_DEFAULT));
+    boolean multiPass = Boolean.parseBoolean((String) allProps.getOrDefault(IS_MULTI_PASS, MULTI_PASS_DEFAULT));
 
     return multiPass;
   }

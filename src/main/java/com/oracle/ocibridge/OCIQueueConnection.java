@@ -174,7 +174,6 @@ class OCIQueueConnection extends ConnectionBase {
     // then acknowledge the receipt
     // for each messages
     if (!messages.isEmpty()) {
-      ArrayList<String> deleteReceipts = new ArrayList<String>();
 
       Iterator iter = messages.iterator();
       while (iter.hasNext()) {
