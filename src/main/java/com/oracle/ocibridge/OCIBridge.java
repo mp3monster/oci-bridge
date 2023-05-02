@@ -201,7 +201,7 @@ public class OCIBridge extends Object {
         logger.debug("looking for property " + key);
         String value = (String) allProps.get(key);
         if (value == null) {
-          logger.warn("INFO no config for " + propList[propIdx]);
+          logger.warn("No config for " + propList[propIdx]);
         } else {
           props.put(propList[propIdx], value);
         }
@@ -319,16 +319,15 @@ public class OCIBridge extends Object {
   }
 
   public static void main(String[] args) {
+    printLoggerInfo();
     logger.info("Solace props:\n" + listParams(SolaceConnection.getPropParams()));
     logger.info("OCI props:\n" + listParams(OCIQueueConnection.getPropParams()));
     logger.info("Synthetic props:\n" + listParams(SyntheticConnection.getPropParams()));
 
     getAllProps();
-
-    logger.info("got all props");
+    logger.debug("loaded all props");
 
     logger.info("Is multi pass =" + isMultiPass());
-
     if (isMultiPass()) {
       multiPass();
     } else {
