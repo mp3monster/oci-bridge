@@ -1,0 +1,59 @@
+echo %1
+if [%1]==[reset] goto :reset
+
+set  isMultiPass=False
+set  Testing=false
+set  ListConnectorProps=true
+set  milliDelayOnMultiPass=1000
+set  ConnectionList=Synthetic1-Synthetic1 
+REM set  ConnectionList=Synthetic1-OCIQueue, OCIQueue-cloudSolace
+REM set  ConnectionList=Synthetic1-OCIQueue
+set  Synthetic1__Type=Synthetic
+set  Synthetic1__test=widget
+set  OCIQueue__Type=OCIQUEUE
+set  OCIQueue__OCI_AUTHFILE=oci.properties
+set  OCIQueue__OCI_USERID=ocid1.user.oc1..aaaaaaaabbbbbbbbbbbbbccccccccccccccccdddddddeeeeeeeeeeffffff
+set  OCIQueue__OCI_TENANT_ID=ocid1.tenancy.oc1..aaaaaaaabbbbbbbbbbbbbccccccccccccccccdddddddeeeeeeeeeeffffff
+set  OCIQueue__OCI_FINGERPRINT="11:22:33:44:55:66:77:88:aa:bb:cc:dd:ee:ff:a1:a2"
+set  OCIQueue__OCI_REGION=us-ashburn-1
+set  OCIQueue__OCI_QUEUEID=ocid1.queue.oc1.iad.aaaaaaaabbbbbbbbbbbbbccccccccccccccccdddddddeeeeeeeeeeffffff
+set  OCIQueue__POLLDURATIONSECS=5
+set  OCIQueue__QUEUENAME=demo-queue
+set  cloudSolace__Type=Solace
+set  cloudSolace__SOLACE_PORT=55443
+set  cloudSolace__host=xxx
+set  cloudSolace__MESSAGE_TYPE=queue
+set  cloudSolace__solace.messaging.authentication.scheme=AUTHENTICATION_SCHEME_BASIC
+set  cloudSolace__username=solace-cloud-client
+set  cloudSolace__password=gibberishPassword
+set  cloudSolace__SOLACE_TOPICNAME=myTopic
+set  cloudSolace__vpn_name=demo
+
+java -Dorg.slf4j.simpleLogger.defaultLogLevel=debug -jar ./target/ocibridge-jar-with-dependencies.jar com.oracle.ocibridge.OCIBridge
+
+:reset
+set  isMultiPass=
+set  Testing=
+set  ListConnectorProps=
+set  milliDelayOnMultiPass=
+set  ConnectionList=
+set  Synthetic1__Type=
+set  Synthetic1__test=
+set  OCIQueue__Type=
+set  OCIQueue__OCI_AUTHFILE=
+set  OCIQueue__OCI_USERID=
+set  OCIQueue__OCI_TENANT_ID=
+set  OCIQueue__OCI_FINGERPRINT=
+set  OCIQueue__OCI_REGION=
+set  OCIQueue__OCI_QUEUEID=
+set  OCIQueue__POLLDURATIONSECS=
+set  OCIQueue__QUEUENAME=
+set  cloudSolace__Type=
+set  cloudSolace__SOLACE_PORT=
+set  cloudSolace__host=
+set  cloudSolace__MESSAGE_TYPE=
+set  cloudSolace__solace.messaging.authentication.scheme=
+set  cloudSolace__username=
+set  cloudSolace__password=
+set  cloudSolace__SOLACE_TOPICNAME=
+set  cloudSolace__vpn_name=
