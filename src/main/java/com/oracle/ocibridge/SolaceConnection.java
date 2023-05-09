@@ -2,6 +2,7 @@ package com.oracle.ocibridge;
 
 import java.util.ListIterator;
 import java.util.Properties;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,10 +50,17 @@ class SolaceConnection extends ConnectionBase {
 
   public static final String TYPENAME = "Solace";
 
+  private static final String TOPICNAME = "SOLACE_TOPICNAME";
+  private static final String CLIENTNAME = "CLIENT_NAME";
+  private static final String QUEUECONNECTION = "QUEUE";
+  private static final String TOPICCONNECTION = "TOPIC";
+  private static final String MESSAGETYPE = "MESSAGE_TYPE";
+
   /**
    *
    */
   private static final String DEFAULTVPN = "default";
+  private static final String NOT_SET = "NOT-SET";
 
   /**
    *
@@ -104,18 +112,6 @@ class SolaceConnection extends ConnectionBase {
 
   private static Logger logger = LoggerFactory.getLogger(SolaceConnection.class);
 
-  private static final String TOPICNAME = "SOLACE_TOPICNAME";
-  private static final String CLIENTNAME = "CLIENT_NAME";
-  private static final String QUEUECONNECTION = "QUEUE";
-  private static final String TOPICCONNECTION = "TOPIC";
-  private static final String MESSAGETYPE = "MESSAGE_TYPE";
-
-  private static final String[] JCSMPPROPPARAMS = new String[] { JCSMPProperties.AUTHENTICATION_SCHEME,
-      JCSMPProperties.HOST,
-      JCSMPProperties.USERNAME,
-      JCSMPProperties.VPN_NAME,
-      JCSMPProperties.PASSWORD };
-
   private static final String[] SOLACEPROPPARAMS = new String[] {
       ServiceProperties.RECEIVER_DIRECT_SUBSCRIPTION_REAPPLY,
       TOPICNAME,
@@ -123,6 +119,12 @@ class SolaceConnection extends ConnectionBase {
       MESSAGETYPE,
       BridgeCommons.CONNECTIONTYPE,
       JCSMPProperties.AUTHENTICATION_SCHEME,
+      JCSMPProperties.HOST,
+      JCSMPProperties.USERNAME,
+      JCSMPProperties.VPN_NAME,
+      JCSMPProperties.PASSWORD };
+
+  private static final String[] JCSMPPROPPARAMS = new String[] { JCSMPProperties.AUTHENTICATION_SCHEME,
       JCSMPProperties.HOST,
       JCSMPProperties.USERNAME,
       JCSMPProperties.VPN_NAME,
@@ -212,16 +214,26 @@ class SolaceConnection extends ConnectionBase {
   private void init(Properties properties, boolean isPublisher) {
     props = deAliasProps(properties);
     this.isPublisher = isPublisher;
-    logger.debug("creating a solace, as a publisher " + isPublisher);
+    if (logger.isDebugEnabled()) {
+      logger.debug("creating a solace, as a publisher " + isPublisher);
+      logger.debug(BridgeCommons.prettyPropertiesToString(properties, "Solace initialized properties", ""));
+    }
   }
 
+  /*
+   * Some systems cant handle dots in environmental vars - therefore we dealias
+   * them by accepting _ as a substitute and then swapping the _ for . before
+   * presenting the properties to Solace
+   * 
+   * @returns the dealiased properties
+   */
   private static Properties deAliasProps(Properties props) {
     for (int aliasedPropCtr = 0; aliasedPropCtr < ALIASEDPROPERTIES.length; aliasedPropCtr++) {
       String aliased = ALIASEDPROPERTIES[aliasedPropCtr].replace(BridgeCommons.PROP_PREFIX, INTERNAL_PREFIX);
       if (props.containsKey(aliased)) {
         props.put(ALIASEDPROPERTIES[aliasedPropCtr], props.getProperty(aliased));
         props.remove(aliased);
-        logger.debug("replaced " + ALIASEDPROPERTIES[aliasedPropCtr] + "  with  " + aliased);
+        logger.debug("dealiased " + ALIASEDPROPERTIES[aliasedPropCtr] + "  with  " + aliased);
       }
     }
 
@@ -301,6 +313,9 @@ class SolaceConnection extends ConnectionBase {
 
   private void setupQueue(boolean publish) {
     try {
+      if (logger.isDebugEnabled()) {
+        logger.debug(BridgeCommons.prettyPropertiesToString(solaceProps.toProperties(), getConnectionName(), ""));
+      }
       session = JCSMPFactory.onlyInstance().createSession(solaceProps);
       session.connect();
       String qName = props.getProperty(TOPICNAME);
@@ -332,8 +347,11 @@ class SolaceConnection extends ConnectionBase {
     }
   }
 
+  /*
+   * 
+   */
   void setupTopicPublisher() {
-    logger.info("** TODOS setting up Solace Topic publisher");
+    logger.warn("** TODOS setting up Solace Topic publisher");
 
     publisher = messagingService.createPersistentMessagePublisherBuilder().build();
 
@@ -342,20 +360,18 @@ class SolaceConnection extends ConnectionBase {
     publisher.start();
 
     while (!publisher.isReady()) {
-      final int sleepTime = 5000;
+      final int sleepTime = DEFAULT_SLEEP;
       int sleepCtr = 0;
       logger.info("Waiting on Solace publisher to be ready");
-      try {
-        sleepCtr++;
-        Thread.sleep(DEFAULT_SLEEP);
-      } catch (InterruptedException interrupt) {
-        logger.warn(
-            "Disturbed waiting for publisher to be ready - slept for " + (sleepCtr * sleepTime) / 1000 + " seconds");
-      }
+      BridgeCommons.pause("SolaceTopicPublisher", sleepTime);
+      sleepCtr++;
     }
     logger.debug("Solace publisher is ready");
   }
 
+  /*
+   * 
+   */
   void setupTopicReceiver() {
     logger.info("** TODOS setting up Solace Topic receiver");
     if (receiver == null) {
@@ -381,7 +397,7 @@ class SolaceConnection extends ConnectionBase {
           messages.add(message);
           target.sendMessages(messages);
         }
-        logger.info("message hander read >>" + message);
+        logger.info("message handler read >>" + message);
       };
     }
   }
@@ -400,10 +416,10 @@ class SolaceConnection extends ConnectionBase {
     }
 
     if (props.getProperty(JCSMPProperties.VPN_NAME) == null) {
-      props.setProperty(
-          JCSMPProperties.VPN_NAME, DEFAULTVPN);
+      props.setProperty(JCSMPProperties.VPN_NAME, DEFAULTVPN);
       logger.warn("Setting " + JCSMPProperties.VPN_NAME + "to default");
     }
+
     /*
      * if (props.getProperty(ServiceProperties.RECEIVER_DIRECT_SUBSCRIPTION_REAPPLY)
      * == null) {
@@ -420,7 +436,7 @@ class SolaceConnection extends ConnectionBase {
 
     String clientname = props.getProperty(CLIENTNAME, DEFAULTVPN);
 
-    switch (props.getProperty(MESSAGETYPE, "NOT-SET").toUpperCase()) {
+    switch (props.getProperty(MESSAGETYPE, NOT_SET).toUpperCase()) {
       case QUEUECONNECTION:
         channelType = ChannelType.QUEUE;
         setupQueue(isPublisher);
@@ -444,6 +460,9 @@ class SolaceConnection extends ConnectionBase {
   }
 
   /*
+   * Implements the method for providing the connection name for this connection
+   * 
+   * @return the name for this connection
    */
   public String getConnectionName() {
     return TYPENAME + ":" + props.getProperty(TOPICNAME);
