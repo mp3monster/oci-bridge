@@ -90,7 +90,7 @@ public class OCIBridge extends Object {
 
         default:
           params = null;
-          logger.info("No connection type defined for " + prefix);
+          logger.warn("No connection type defined for " + prefix);
       }
     } else {
       logger.warn("No connection type defined for " + prefix + " expected property " + propName);
@@ -103,7 +103,7 @@ public class OCIBridge extends Object {
    * Build a connection object based on the configuration params. This is the
    * factory for connections
    */
-  static ConnectionBaseInterface createConnection(Properties props, String prefix) {
+  static ConnectionBaseInterface createConnection(Properties props, String prefix, boolean isaSource) {
     ConnectionBaseInterface instance = null;
     final String TYPETAG = "<NOT SET>";
     String connType = TYPETAG;
@@ -117,14 +117,12 @@ public class OCIBridge extends Object {
     }
 
     switch (connType) {
-      // case CONNECTION_TYPE_OCIQ:
       case OCIQueueConnection.TYPENAME:
         instance = new OCIQueueConnection(props);
         break;
 
-      // case CONNECTION_TYPE_SOLACE:
       case SolaceConnection.TYPENAME:
-        instance = new SolaceConnection(props);
+        instance = new SolaceConnection(props, isaSource);
         break;
 
       case SyntheticConnection.TYPENAME:
@@ -221,7 +219,11 @@ public class OCIBridge extends Object {
     // lower case all the keys - makes it easier to do matching later
     allProps = System.getenv();
 
-    logger.debug("All props=" + BridgeCommons.prettyPropertiesToString(allProps, "All props:", ""));
+    if (logger.isDebugEnabled()) {
+      // logger.debug("All props=" + BridgeCommons.prettyPropertiesToString(allProps,
+      // "All props:", ""));
+    }
+
     String propSetStr = (String) allProps.get(CONNECTION_LIST);
     logger.info("Connections list=" + propSetStr);
 
@@ -237,7 +239,8 @@ public class OCIBridge extends Object {
           Properties fromProps = getProps(fromPrefix, getPropParams(allProps, fromPrefix), allProps);
           Properties toProps = getProps(toPrefix, getPropParams(allProps, toPrefix), allProps);
           connections.put(mapping,
-              new ConnectionPair(createConnection(fromProps, fromPrefix), createConnection(toProps, toPrefix)));
+              new ConnectionPair(createConnection(fromProps, fromPrefix, true),
+                  createConnection(toProps, toPrefix, false)));
         } catch (NullPointerException err) {
           logger.error(err.getMessage());
           logger.error(BridgeCommons.exceptionToString(err));
