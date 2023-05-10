@@ -15,21 +15,6 @@ abstract class ConnectionBase implements ConnectionBaseInterface {
 
   private static Logger logger = LoggerFactory.getLogger(ConnectionBase.class.getName());
 
-  @Override
-  abstract public void connect();
-
-  @Override
-  abstract public boolean connected();
-
-  @Override
-  abstract public MessageList getMessages();
-
-  @Override
-  abstract public String getConnectionName();
-
-  @Override
-  abstract public void sendMessages(MessageList messages);
-
   private ConnectionBase() {
     logger.error("Prevent default constructor");
   }
