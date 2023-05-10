@@ -47,6 +47,7 @@ class SolaceConnection extends ConnectionBase {
    * for Linux
    */
   private static final String INTERNAL_PREFIX = ".";
+  private static final String SUB_PREFIX = "_";
 
   public static final String TYPENAME = "Solace";
 
@@ -142,7 +143,7 @@ class SolaceConnection extends ConnectionBase {
   };
 
   private Properties props = null;
-  private boolean isPublisher = true;
+  private boolean isPublishToSolace = true;
   private MessagingService messagingService = null;
   private PersistentMessagePublisher publisher = null;
   private ChannelType channelType = ChannelType.NOTSET;
@@ -206,16 +207,17 @@ class SolaceConnection extends ConnectionBase {
   /*
    * Stores the properties provided
    */
-  public SolaceConnection(Properties properties, boolean isPublisher) {
+  public SolaceConnection(Properties properties, boolean setToPublish) {
     super(TYPENAME);
-    init(properties, isPublisher);
+    logger.debug("Constructor with setToPublish set to " + setToPublish);
+    init(properties, setToPublish);
   }
 
-  private void init(Properties properties, boolean isPublisher) {
+  private void init(Properties properties, boolean isPublishToSolace) {
     props = deAliasProps(properties);
-    this.isPublisher = isPublisher;
+    this.isPublishToSolace = isPublishToSolace;
     if (logger.isDebugEnabled()) {
-      logger.debug("creating a solace, as a publisher " + isPublisher);
+      logger.debug("creating a solace, as a publisher " + isPublishToSolace);
       logger.debug(BridgeCommons.prettyPropertiesToString(properties, "Solace initialized properties", ""));
     }
   }
@@ -229,11 +231,11 @@ class SolaceConnection extends ConnectionBase {
    */
   private static Properties deAliasProps(Properties props) {
     for (int aliasedPropCtr = 0; aliasedPropCtr < ALIASEDPROPERTIES.length; aliasedPropCtr++) {
-      String aliased = ALIASEDPROPERTIES[aliasedPropCtr].replace(BridgeCommons.PROP_PREFIX, INTERNAL_PREFIX);
-      if (props.containsKey(aliased)) {
+      String aliased = new String(ALIASEDPROPERTIES[aliasedPropCtr]);
+      aliased = aliased.replace(SUB_PREFIX, INTERNAL_PREFIX);
+      if ((!ALIASEDPROPERTIES[aliasedPropCtr].equals(aliased)) && (props.containsKey(aliased))) {
         props.put(ALIASEDPROPERTIES[aliasedPropCtr], props.getProperty(aliased));
-        props.remove(aliased);
-        logger.debug("dealiased " + ALIASEDPROPERTIES[aliasedPropCtr] + "  with  " + aliased);
+        logger.debug("dealiasing " + ALIASEDPROPERTIES[aliasedPropCtr] + " with " + aliased);
       }
     }
 
@@ -274,14 +276,14 @@ class SolaceConnection extends ConnectionBase {
   public boolean connected() {
     boolean connected = false;
     logger.debug("Checking connectivity for " + getConnectionName()
-        + " on channel " + channelType + " as publisher " + isPublisher);
+        + " on channel " + channelType + " as publisher " + isPublishToSolace);
     switch (channelType) {
       case QUEUE:
         connected = ((session != null) && (!session.isClosed()));
-        if (!isPublisher && connected) {
+        if (!isPublishToSolace && connected) {
           connected = (queueReceiver != null) && (!queueReceiver.isClosed());
         }
-        if (isPublisher && connected) {
+        if (isPublishToSolace && connected) {
           connected = (producer != null) && (!producer.isClosed());
         }
 
@@ -293,7 +295,7 @@ class SolaceConnection extends ConnectionBase {
       case TOPIC:
         connected = messageHandler != null;
 
-        if (!isPublisher && connected) {
+        if (!isPublishToSolace && connected) {
           connected = (receiver != null) && (receiver.isRunning()) && (!receiver.isTerminated())
               && (!receiver.isTerminating());
         }
@@ -439,12 +441,12 @@ class SolaceConnection extends ConnectionBase {
     switch (props.getProperty(MESSAGETYPE, NOT_SET).toUpperCase()) {
       case QUEUECONNECTION:
         channelType = ChannelType.QUEUE;
-        setupQueue(isPublisher);
+        setupQueue(isPublishToSolace);
         break;
 
       case TOPICCONNECTION:
         channelType = ChannelType.TOPIC;
-        if (isPublisher) {
+        if (isPublishToSolace) {
           setupTopicPublisher();
         } else {
           setupTopicReceiver();
@@ -496,6 +498,9 @@ class SolaceConnection extends ConnectionBase {
     return messages;
   }
 
+  /*
+   * Sends messages to Solace
+   */
   public void sendMessages(MessageList messages) {
     if ((messages == null) || (messages.isEmpty())) {
       logger.warn("No messages to send");
@@ -518,6 +523,9 @@ class SolaceConnection extends ConnectionBase {
     }
   }
 
+  /*
+   * Send message for Queue
+   */
   private void sendTopicMessages(MessageList messages) {
     logger.warn("**** Sending to topic not implemented yet");
     if (messagingService == null) {
@@ -553,7 +561,7 @@ class SolaceConnection extends ConnectionBase {
         /*
          * if ((session == null) || (session.isClosed())) {
          * logger.warn("Send Solace Queue message - but not yet connected");
-         * setupQueue(isPublisher);
+         * setupQueue(isPublishToSolace);
          * }
          */
 
