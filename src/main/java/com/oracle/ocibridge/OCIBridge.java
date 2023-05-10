@@ -19,27 +19,41 @@ import org.slf4j.LoggerFactory;
 public class OCIBridge extends Object {
 
   /**
-   *
+   * A property for a specific connection when used we pass all properties wioth
+   * the connection prefix rather than the named specific set provided as the
+   * default set. This is ideal when we need to provide the target service more
+   * configuration values than originally expected
    */
-  private static final String MULTI_PASS_DEFAULT = "False";
+  private static final String PASS_ALL = "pass_all";
+
   /**
-   *
+   * The character to separate the names of the source and destination connections
    */
   private static final String CONNECTOR_MAPPING_SEPARATOR = "-";
   /**
-   *
+   * Delay time in milliseconds after each pass - if we dont want the system poll
+   * through all the connections too quickly.
    */
   private static final String MILLI_DELAY_ON_MULTI_PASS = "milliDelayOnMultiPass";
-  private static final String IS_MULTI_PASS = "isMultiPass";
-  private static final String CONNECTION_LIST = "ConnectionList";
-  private static final String CONNECTIONTYPE = "Type";
 
-  private static Logger logger = LoggerFactory.getLogger(OCIBridge.class.getName());
+  /**
+   * Defines whether we need to make one pass or multiple passes. A single pass is
+   * ideal for testing purposes
+   */
+  private static final String MULTI_PASS_DEFAULT = "False";
+  private static final String IS_MULTI_PASS = "isMultiPass";
+
+  /*
+   * The name of the property that is used to define all the connections
+   */
+  private static final String CONNECTION_LIST = "ConnectionList";
 
   /**
    * separator between the connection name and the relevant property
    */
   private static final String PROP_PREFIX = BridgeCommons.PROP_PREFIX;
+
+  private static Logger logger = LoggerFactory.getLogger(OCIBridge.class.getName());
 
   static ConnectionsMap connections = new ConnectionsMap();
   static Map allProps = new HashMap();
@@ -72,7 +86,7 @@ public class OCIBridge extends Object {
    */
   static String[] getPropParams(Map props, String prefix) {
     String[] params = null;
-    String propName = prefix + PROP_PREFIX + CONNECTIONTYPE;
+    String propName = prefix + PROP_PREFIX + BridgeCommons.CONNECTIONTYPE;
     String connType = (String) props.get(propName);
     if (connType != null) {
       switch (connType) {
@@ -107,7 +121,7 @@ public class OCIBridge extends Object {
     ConnectionBaseInterface instance = null;
     final String TYPETAG = "<NOT SET>";
     String connType = TYPETAG;
-    String propName = CONNECTIONTYPE;
+    String propName = BridgeCommons.CONNECTIONTYPE;
 
     if ((props != null) && (prefix != null)) {
       connType = props.getProperty(propName, TYPETAG);
@@ -192,20 +206,36 @@ public class OCIBridge extends Object {
     if ((prefix != null) && (prefix.length() > 0)) {
       prefix = prefix + PROP_PREFIX;
     }
-
-    if (propList != null) {
-      for (int propIdx = 0; propIdx < propList.length; propIdx++) {
-        String key = (prefix + propList[propIdx]).trim();
-        logger.debug("looking for property " + key);
-        String value = (String) allProps.get(key);
-        if (value == null) {
-          logger.warn("No config for " + propList[propIdx]);
-        } else {
-          props.put(propList[propIdx], value);
+    if (allProps == null) {
+      logger.error("Trying to filter all props - nothing to process");
+      return props;
+    }
+    if ((prefix != null) && Boolean.parseBoolean((String) allProps.getOrDefault(prefix + PASS_ALL, "FALSE"))) {
+      logger.debug("Passing all properties for " + prefix);
+      Iterator<String> iter = allProps.keySet().iterator();
+      while (iter.hasNext()) {
+        String key = iter.next();
+        if (key.startsWith(prefix)) {
+          props.put(key.substring(prefix.length()), allProps.get(key));
         }
       }
+      for (int allPropIdx = 0; allPropIdx < allProps.size(); allPropIdx++) {
+      }
     } else {
-      logger.info("No prop list for " + prefix.replace(BridgeCommons.PROP_PREFIX, ""));
+      if (propList != null) {
+        for (int propIdx = 0; propIdx < propList.length; propIdx++) {
+          String key = (prefix + propList[propIdx]).trim();
+          logger.debug("looking for property " + key);
+          String value = (String) allProps.get(key);
+          if (value == null) {
+            logger.warn("No config for " + propList[propIdx]);
+          } else {
+            props.put(propList[propIdx], value);
+          }
+        }
+      } else {
+        logger.info("No prop list for " + prefix.replace(BridgeCommons.PROP_PREFIX, ""));
+      }
     }
 
     return props;
