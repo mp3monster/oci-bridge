@@ -8,6 +8,11 @@ import org.slf4j.LoggerFactory;
 /*
  */
 class SyntheticConnection extends ConnectionBase {
+  /**
+   *
+   */
+  private static final String TOTAL_MSGS = "total_msgs";
+
   private static Logger logger = LoggerFactory.getLogger(SyntheticConnection.class);
 
   public static final String TYPENAME = "Synthetic";
@@ -18,8 +23,9 @@ class SyntheticConnection extends ConnectionBase {
 
   public SyntheticConnection(Properties properties) {
     super(TYPENAME);
-    logger.info(TYPENAME + " props received " + properties.toString());
     props = properties;
+    totalSyntheticMsgs = (Integer.parseInt((String) props.getOrDefault(TOTAL_MSGS, 2)));
+    logger.info(TYPENAME + " props received " + BridgeCommons.prettyPropertiesToString(properties, TYPENAME, ""));
   }
 
   public void connect() {
@@ -41,6 +47,7 @@ class SyntheticConnection extends ConnectionBase {
 
   public MessageList getMessages() {
     MessageList messages = new MessageList();
+    logger.debug("totalSyntheticMsgs=" + totalSyntheticMsgs);
     for (int msgCtr = 0; msgCtr < totalSyntheticMsgs; msgCtr++) {
       totalSentCount++;
       messages.add("Test Message " + totalSentCount);
