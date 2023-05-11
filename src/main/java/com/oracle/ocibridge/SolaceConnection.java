@@ -201,7 +201,9 @@ class SolaceConnection extends ConnectionBase {
 
   public SolaceConnection(Properties properties) {
     super(TYPENAME);
-    init(properties, true);
+    final boolean setToPublish = true;
+    logger.debug("Constructor with setToPublish being defaulted as" + setToPublish);
+    init(properties, setToPublish);
   }
 
   /*
@@ -216,6 +218,7 @@ class SolaceConnection extends ConnectionBase {
   private void init(Properties properties, boolean isPublishToSolace) {
     props = deAliasProps(properties);
     this.isPublishToSolace = isPublishToSolace;
+    checkProps();
     if (logger.isDebugEnabled()) {
       logger.debug("creating a solace, as a publisher " + isPublishToSolace);
       logger.debug(BridgeCommons.prettyPropertiesToString(properties, "Solace initialized properties", ""));
@@ -313,17 +316,14 @@ class SolaceConnection extends ConnectionBase {
     return connected;
   }
 
-  private void setupQueue(boolean publish) {
+  private void setupQueue(boolean publishtoSolace) {
     try {
-      if (logger.isDebugEnabled()) {
-        logger.debug(BridgeCommons.prettyPropertiesToString(solaceProps.toProperties(), getConnectionName(), ""));
-      }
       session = JCSMPFactory.onlyInstance().createSession(solaceProps);
       session.connect();
       String qName = props.getProperty(TOPICNAME);
-      logger.debug("setting up for queue " + qName + " to publish " + publish);
+      logger.debug("setting up for queue " + qName + " to publish " + publishtoSolace);
       queue = JCSMPFactory.onlyInstance().createQueue(qName);
-      if (publish) {
+      if (publishtoSolace) {
         logger.debug(getConnectionName() + " - build queue producer");
         producer = session.getMessageProducer(new SolaceHandler());
       } else {
@@ -404,13 +404,7 @@ class SolaceConnection extends ConnectionBase {
     }
   }
 
-  /*
-   * Constructs the connection to the Solace broker
-   * configuration is taken from the properties object
-   */
-  public void connect() {
-    logger.info("Building connection for Solace");
-
+  private void checkProps() {
     if (props.getProperty(JCSMPProperties.AUTHENTICATION_SCHEME) == null) {
       logger.warn("Defaulting config " + JCSMPProperties.AUTHENTICATION_SCHEME);
       props.setProperty(JCSMPProperties.AUTHENTICATION_SCHEME,
@@ -429,9 +423,19 @@ class SolaceConnection extends ConnectionBase {
      * "true");
      * }
      */
+  }
+
+  /*
+   * Constructs the connection to the Solace broker
+   * configuration is taken from the properties object
+   */
+  public void connect() {
+    logger.info("Building connection for Solace");
+
     for (int jcsmpPropsIdx = 0; jcsmpPropsIdx < JCSMPPROPPARAMS.length; jcsmpPropsIdx++) {
       String value = props.getProperty(JCSMPPROPPARAMS[jcsmpPropsIdx]);
       solaceProps.setProperty(JCSMPPROPPARAMS[jcsmpPropsIdx], value);
+      // TODO: expand list of properties or pass all props to Solace
 
       logger.debug("Mapped " + JCSMPPROPPARAMS[jcsmpPropsIdx] + " to " + value);
     }
@@ -471,30 +475,32 @@ class SolaceConnection extends ConnectionBase {
   }
 
   /*
+   * If we've lost connectivity, then reconnect and then call the correct method
+   * to handle the messages depnding upon Queue or Topic
    */
   public MessageList getMessages() {
     logger.debug("Solace get messages");
     MessageList messages = new MessageList();
-    /*
-     * TopicSubscription topic = TopicSubscription.of(props.getProperty(TOPICNAME));
-     * 
-     * if (!messagingService.isConnected()) {
-     * logger.warn("reconnecting");
-     * messagingService.connect();
-     * }
-     * receiver = messagingService.createDirectMessageReceiverBuilder()
-     * .withSubscriptions(topic).build().start();
-     * logger.debug("receive created");
-     * 
-     * InboundMessage message = receiver.receiveMessage(1);
-     * if (message != null) {
-     * String recdMessage = message.dump();
-     * logger.info("message is:" + recdMessage);
-     * messages.add(recdMessage);
-     * } else {
-     * logger.warn("null message object");
-     * }
-     */
+
+    TopicSubscription topic = TopicSubscription.of(props.getProperty(TOPICNAME));
+
+    if (!messagingService.isConnected()) {
+      logger.info("reconnecting");
+      messagingService.connect();
+    }
+    receiver = messagingService.createDirectMessageReceiverBuilder()
+        .withSubscriptions(topic).build().start();
+    logger.debug("receiver created");
+
+    InboundMessage message = receiver.receiveMessage(1);
+    if (message != null) {
+      String recdMessage = message.dump();
+      logger.info("message is:" + recdMessage);
+      messages.add(recdMessage);
+    } else {
+      logger.warn("null message object");
+    }
+
     return messages;
   }
 
@@ -558,12 +564,10 @@ class SolaceConnection extends ConnectionBase {
 
       try {
 
-        /*
-         * if ((session == null) || (session.isClosed())) {
-         * logger.warn("Send Solace Queue message - but not yet connected");
-         * setupQueue(isPublishToSolace);
-         * }
-         */
+        if ((session == null) || (session.isClosed())) {
+          logger.warn("Send Solace Queue message - but not yet connected");
+          setupQueue(isPublishToSolace);
+        }
 
         TextMessage solaceMsg = JCSMPFactory.onlyInstance().createMessage(TextMessage.class);
         solaceMsg.setDeliveryMode(DeliveryMode.PERSISTENT);
