@@ -21,11 +21,21 @@ class SyntheticConnection extends ConnectionBase {
   private int totalSyntheticMsgs = 2;
   private int totalSentCount = 0;
 
+  private void init(Properties properties, boolean pretendToSend) {
+    totalSyntheticMsgs = (Integer.parseInt((String) props.getOrDefault(TOTAL_MSGS, 2)));
+    logger.info(TYPENAME + " props received " + BridgeCommons.prettyPropertiesToString(properties, TYPENAME, ""));
+  }
+
   public SyntheticConnection(Properties properties) {
     super(TYPENAME);
     props = properties;
-    totalSyntheticMsgs = (Integer.parseInt((String) props.getOrDefault(TOTAL_MSGS, 2)));
-    logger.info(TYPENAME + " props received " + BridgeCommons.prettyPropertiesToString(properties, TYPENAME, ""));
+    init(properties, false);
+  }
+
+  public SyntheticConnection(Properties properties, boolean isSender) {
+    super(TYPENAME);
+    props = properties;
+    init(properties, isSender);
   }
 
   public void connect() {
@@ -51,7 +61,7 @@ class SyntheticConnection extends ConnectionBase {
     for (int msgCtr = 0; msgCtr < totalSyntheticMsgs; msgCtr++) {
       totalSentCount++;
       messages.add("Test Message " + totalSentCount);
-      logger.info("-----\nSynthetic sent:\n" + messages.get(msgCtr) + "\n-----");
+      logger.info("-----\nSynthetic retrieved:\n" + messages.get(msgCtr) + "\n-----");
     }
     return messages;
   }
@@ -62,7 +72,7 @@ class SyntheticConnection extends ConnectionBase {
 
   public void sendMessages(MessageList messages) {
     for (int msgCtr = 0; msgCtr < messages.size(); msgCtr++) {
-      logger.info("=======\nSynthetic received:\n" + messages.get(msgCtr) + "\n=======");
+      logger.info("=======\nSynthetic sent:\n" + messages.get(msgCtr) + "\n=======");
     }
   }
 
