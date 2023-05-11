@@ -117,7 +117,7 @@ public class OCIBridge extends Object {
    * Build a connection object based on the configuration params. This is the
    * factory for connections
    */
-  static ConnectionBaseInterface createConnection(Properties props, String prefix, boolean isaSource) {
+  static ConnectionBaseInterface createConnection(Properties props, String prefix, boolean receiveFromService) {
     ConnectionBaseInterface instance = null;
     final String TYPETAG = "<NOT SET>";
     String connType = TYPETAG;
@@ -136,7 +136,7 @@ public class OCIBridge extends Object {
         break;
 
       case SolaceConnection.TYPENAME:
-        instance = new SolaceConnection(props, isaSource);
+        instance = new SolaceConnection(props, !receiveFromService);
         break;
 
       case SyntheticConnection.TYPENAME:
@@ -284,7 +284,7 @@ public class OCIBridge extends Object {
     if (allProps == null) {
       logger.error("Not initialized with props");
     }
-    logger.debug("getAllProps is " + IS_MULTI_PASS + " =" + allProps.get(IS_MULTI_PASS));
+    logger.trace("getAllProps is " + IS_MULTI_PASS + " =" + allProps.get(IS_MULTI_PASS));
     boolean multiPass = Boolean.parseBoolean((String) allProps.getOrDefault(IS_MULTI_PASS, MULTI_PASS_DEFAULT));
 
     return multiPass;
