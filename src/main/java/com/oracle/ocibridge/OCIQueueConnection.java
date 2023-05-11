@@ -108,7 +108,12 @@ class OCIQueueConnection extends ConnectionBase {
     super(TYPENAME);
     props = properties;
     checkProps(props);
+  }
 
+  public OCIQueueConnection(Properties properties, boolean sendToOCI) {
+    super(TYPENAME);
+    props = properties;
+    checkProps(props);
   }
 
   public boolean connected() {
