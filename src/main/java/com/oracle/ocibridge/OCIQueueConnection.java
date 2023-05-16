@@ -1,9 +1,12 @@
 package com.oracle.ocibridge;
 
+import java.io.InputStream;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,8 +14,10 @@ import org.slf4j.LoggerFactory;
 import com.oracle.bmc.ConfigFileReader;
 import com.oracle.bmc.Region;
 import com.oracle.bmc.auth.AuthenticationDetailsProvider;
+import com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
+import com.oracle.bmc.auth.SimplePrivateKeySupplier;
 import com.oracle.bmc.queue.QueueClient;
 import com.oracle.bmc.queue.model.DeleteMessagesDetails;
 import com.oracle.bmc.queue.model.DeleteMessagesDetailsEntry;
@@ -29,6 +34,10 @@ import com.oracle.bmc.queue.responses.PutMessagesResponse;
  * The OCI Connection implementation - connects and sends and receives
  */
 class OCIQueueConnection extends ConnectionBase {
+  /**
+   *
+   */
+  private static final String KEY_PATH = "KEY_PATH";
   private static Logger logger = LoggerFactory.getLogger(OCIQueueConnection.class.getName());
   public static final String TYPENAME = "OCIQUEUE";
 
@@ -142,14 +151,21 @@ class OCIQueueConnection extends ConnectionBase {
         }
       }
     } else {
-      provider = SimpleAuthenticationDetailsProvider.builder()
-          .fingerprint(props.getProperty(OCI_FINGERPRINT))
-          .tenantId(props.getProperty(OCI_TENANT_ID))
-          .region(Region.fromRegionCodeOrId(props.getProperty(OCI_REGION)))
-          .userId(props.getProperty(OCI_USERID))
-          .build();
+      if (props.containsKey(KEY_PATH)) {
+        Supplier<InputStream> privateKeySupplier = new SimplePrivateKeySupplier(props.getProperty(KEY_PATH));
 
-      logger.warn("Alternate auth not setup");
+        provider = SimpleAuthenticationDetailsProvider.builder()
+            .fingerprint(props.getProperty(OCI_FINGERPRINT))
+            .tenantId(props.getProperty(OCI_TENANT_ID))
+            .region(Region.fromRegionCodeOrId(props.getProperty(OCI_REGION)))
+            .userId(props.getProperty(OCI_USERID))
+            .privateKeySupplier((Supplier<InputStream>) privateKeySupplier)
+            .build();
+        logger.info("env var driven setup");
+      } else {
+        provider = (AuthenticationDetailsProvider) InstancePrincipalsAuthenticationDetailsProvider.builder().build();
+        logger.info("instance principles driven setup");
+      }
     }
     queueClient = QueueClient.builder().build(provider);
     endpoint = ENDPOINTPREFIX + props.getProperty(OCI_REGION) + ENDPOINTPOSTFIX;
