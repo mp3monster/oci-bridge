@@ -22,7 +22,7 @@ class SyntheticConnection extends ConnectionBase {
   private int totalSentCount = 0;
 
   private void init(Properties properties, boolean pretendToSend) {
-    totalSyntheticMsgs = (Integer.parseInt((String) props.getOrDefault(TOTAL_MSGS, 2)));
+    totalSyntheticMsgs = (Integer.parseInt((String) props.getOrDefault(TOTAL_MSGS, "2")));
     logger.info(TYPENAME + " props received " + BridgeCommons.prettyPropertiesToString(properties, TYPENAME, ""));
   }
 
