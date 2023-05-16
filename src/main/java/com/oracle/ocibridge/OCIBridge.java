@@ -10,6 +10,10 @@ package com.oracle.ocibridge;
 import java.util.Properties;
 import java.util.Map;
 import java.util.HashMap;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 
@@ -17,6 +21,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class OCIBridge extends Object {
+
+  /**
+   *
+   */
+  private static final String PROPS_FILE = "PropsFile";
 
   /**
    * A property for a specific connection when used we pass all properties wioth
@@ -210,7 +219,8 @@ public class OCIBridge extends Object {
       logger.error("Trying to filter all props - nothing to process");
       return props;
     }
-    if ((prefix != null) && Boolean.parseBoolean((String) allProps.getOrDefault(prefix + PASS_ALL, "FALSE"))) {
+    if ((prefix != null)
+        && Boolean.parseBoolean((String) allProps.getOrDefault(prefix + PASS_ALL, BridgeCommons.FALSE))) {
       logger.debug("Passing all properties for " + prefix);
       Iterator<String> iter = allProps.keySet().iterator();
       while (iter.hasNext()) {
@@ -242,17 +252,56 @@ public class OCIBridge extends Object {
   }
 
   /*
+   * Look to see of the properties contains a reference to a file. If it does then
+   * load those properties BUT
+   * don't override any set as env vars.
+   */
+  private static Map loadFileProps(Map<String, String> props) {
+    HashMap<String, String> currentProps = new HashMap<String, String>();
+    currentProps.putAll(props);
+    logger.debug("Checking for file overrides");
+    if ((currentProps != null) && (currentProps.containsKey(PROPS_FILE))) {
+      String fileProps = currentProps.get(PROPS_FILE);
+      logger.debug("checking for props file " + fileProps);
+      if (fileProps != null) {
+        File file = new File(fileProps);
+        if (file.exists() && file.isFile() && file.canRead()) {
+          logger.debug("loading props file " + fileProps);
+          String line = null;
+          try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            while ((line = reader.readLine()) != null) {
+              String[] keyValuePair = line.split("=", 2);
+              if (keyValuePair.length > 1) {
+                String key = keyValuePair[0].trim();
+                if (currentProps.containsKey(key)) {
+                  logger.info("Ignoring " + key + " from props file " + fileProps + " value already set");
+                } else {
+                  String value = keyValuePair[1].trim();
+                  logger.info("Loadded from file key=>" + key + "< value=>" + value + "<");
+                  currentProps.put(key, value);
+                }
+              } else {
+                logger.warn("No Key:Value found in line, ignoring: " + line);
+              }
+            }
+          } catch (IOException err) {
+            logger.error("error processing config file" + err.getLocalizedMessage());
+          }
+        }
+      }
+
+    }
+    return currentProps;
+  }
+
+  /*
    * Grab the environment properties as tease out each of the connection
    * constructs
    */
   private static void getAllProps() {
     // lower case all the keys - makes it easier to do matching later
     allProps = System.getenv();
-
-    if (logger.isDebugEnabled()) {
-      // logger.debug("All props=" + BridgeCommons.prettyPropertiesToString(allProps,
-      // "All props:", ""));
-    }
+    allProps = loadFileProps(allProps);
 
     String propSetStr = (String) allProps.get(CONNECTION_LIST);
     logger.info("Connections list=" + propSetStr);
