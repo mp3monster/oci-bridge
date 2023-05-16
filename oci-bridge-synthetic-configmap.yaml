@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oci-synthetic-bridge
+data:
+  ListConnectorProps: "True"
+  milliDelayOnMultiPass: "10000"
+  ConnectionList: "Synthetic1-Synthetic1"
+  Synthetic1__Type: "Synthetic"
+  Synthetic1__pass_all: "true"
+  Synthetic1__total_msgs: "1"
