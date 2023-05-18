@@ -9,3 +9,6 @@ data:
   Synthetic1__Type: "Synthetic"
   Synthetic1__pass_all: "true"
   Synthetic1__total_msgs: "1"
+  Synthetic1__prefix: "xxxxxxxxxxxxxxxxxxxx"
+  PropsFile: "bridge-synthetic-only.properties"
+  isMultiPass: "true"
