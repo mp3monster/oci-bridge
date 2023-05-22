@@ -400,14 +400,24 @@ public class OCIBridge extends Object {
 
   }
 
-  public static void main(String[] args) {
-    printLoggerInfo();
+  private static void displayConnectionTypeParams() {
     logger.info("Solace props:\n" + listParams(SolaceConnection.getPropParams()));
     logger.info("OCI props:\n" + listParams(OCIQueueConnection.getPropParams()));
     logger.info("Synthetic props:\n" + listParams(SyntheticConnection.getPropParams()));
+  }
+
+  public static void main(String[] args) {
+    String displayAllBasicSettings = System.getenv("DisplayAllSettings");
+    if ((displayAllBasicSettings != null) && (displayAllBasicSettings.equalsIgnoreCase("True"))) {
+      printLoggerInfo();
+      displayConnectionTypeParams();
+    }
 
     getAllProps();
     logger.debug("loaded all props");
+    if ((displayAllBasicSettings != null) && (displayAllBasicSettings.equalsIgnoreCase("True"))) {
+      logger.debug(BridgeCommons.prettyPropertiesToString(allProps, "All Props", ""));
+    }
 
     logger.info("Is multi pass =" + isMultiPass());
     if (isMultiPass()) {
