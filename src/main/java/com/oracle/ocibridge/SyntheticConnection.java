@@ -12,6 +12,7 @@ class SyntheticConnection extends ConnectionBase {
    *
    */
   private static final String TOTAL_MSGS = "total_msgs";
+  public static final String MSG_PREFIX = "prefix";
 
   private static Logger logger = LoggerFactory.getLogger(SyntheticConnection.class);
 
@@ -19,10 +20,12 @@ class SyntheticConnection extends ConnectionBase {
 
   private boolean connected = false;
   private int totalSyntheticMsgs = 2;
+  private String msg_prefix = "";
   private int totalSentCount = 0;
 
   private void init(Properties properties, boolean pretendToSend) {
     totalSyntheticMsgs = (Integer.parseInt((String) props.getOrDefault(TOTAL_MSGS, "2")));
+    msg_prefix = (String) props.getOrDefault(MSG_PREFIX, "");
     logger.info(TYPENAME + " props received " + BridgeCommons.prettyPropertiesToString(properties, TYPENAME, ""));
   }
 
@@ -47,7 +50,7 @@ class SyntheticConnection extends ConnectionBase {
    * @return String[]
    */
   static String[] getPropParams() {
-    String[] props = { BridgeCommons.CONNECTIONTYPE };
+    String[] props = { BridgeCommons.CONNECTIONTYPE, TOTAL_MSGS, MSG_PREFIX };
     return props;
   }
 
@@ -57,10 +60,14 @@ class SyntheticConnection extends ConnectionBase {
 
   public MessageList getMessages() {
     MessageList messages = new MessageList();
-    logger.debug("totalSyntheticMsgs=" + totalSyntheticMsgs);
+    logger.debug("totalSyntheticMsgs=" + totalSyntheticMsgs + ", msg prefix =" + msg_prefix);
+    String msg = "Test Message ";
+    if (msg_prefix.length() > 0) {
+      msg = msg_prefix + " " + msg;
+    }
     for (int msgCtr = 0; msgCtr < totalSyntheticMsgs; msgCtr++) {
       totalSentCount++;
-      messages.add("Test Message " + totalSentCount);
+      messages.add(msg + totalSentCount);
       logger.info("-----\nSynthetic retrieved:\n" + messages.get(msgCtr) + "\n-----");
     }
     return messages;
