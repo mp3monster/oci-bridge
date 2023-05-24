@@ -1,0 +1,55 @@
+# Copyright(c) 2022, Oracle and / or its affiliates.
+# All rights reserved. The Universal Permissive License(UPL), Version 1.0 as shown at http: // oss.oracle.com/licenses/upl
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oci-bdg-queue-deploy
+  labels:
+    app: oci-bdg
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oci-bdg
+  template:
+    metadata:
+      labels:
+        app: oci-bdg
+    spec:
+      containers:
+        - name: oci-bdg
+          image: iad.ocir.io/ociobenablement/oci-bdg:latest
+          env:
+            - name: PropsFile
+              valueFrom:
+                configMapKeyRef:
+                  name: oci-synthetic-queue-bridge
+                  key: PropsFile
+            - name: isMultiPass
+              valueFrom:
+                configMapKeyRef:
+                  name: oci-synthetic-queue-bridge
+                  key: isMultiPass
+            - name: Synthetic1__prefix
+              valueFrom:
+                configMapKeyRef:
+                  name: oci-synthetic-queue-bridge
+                  key: Synthetic1__prefix
+
+            - name: OCIQueue__OCI_USERID
+              valueFrom:
+                configMapKeyRef:
+                  name: oci-synthetic-queue-bridge
+                  key: OCIQueue__OCI_USERID
+            - name: OCIQueue__OCI_TENANT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: oci-synthetic-queue-bridge
+                  key: OCIQueue__OCI_TENANT_ID
+            - name: OCIQueue__OCI_FINGERPRINT
+              valueFrom:
+                configMapKeyRef:
+                  name: oci-synthetic-queue-bridge
+                  key: OCIQueue__OCI_FINGERPRINT
+      imagePullSecrets:
+        - name: ocirsecret-oci-bdg
