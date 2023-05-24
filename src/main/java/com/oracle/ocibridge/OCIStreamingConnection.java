@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.Properties;
 
-public class OCIStreaming extends ConnectionBase {
+public class OCIStreamingConnection extends ConnectionBase {
 
   public static final String TYPENAME = "OCISTREAM";
   private static Logger logger = LoggerFactory.getLogger(OCIQueueConnection.class.getName());
@@ -35,12 +35,12 @@ public class OCIStreaming extends ConnectionBase {
     return OCIPROPPARAMS;
   }
 
-  private OCIStreaming() {
+  private OCIStreamingConnection() {
     super(TYPENAME);
     logger.error("Constructor in OCIStreaming incorrectly called");
   };
 
-  public OCIStreaming(Properties properties) {
+  public OCIStreamingConnection(Properties properties) {
     super(TYPENAME);
     props = properties;
     logger.error("Constructor in OCIStreaming called not fully implemented");
