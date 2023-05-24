@@ -4,76 +4,23 @@
 
 ## Introduction
 
-This is a simple tool intended to help Bridge event sources and destinations where there isn't a natural connection deployment already available within OCI.  It has been initially developed to support connecting [OCI Queues](https://www.oracle.com/cloud/queue/) to and from [Solace](https://solace.com/) [PubSub+](https://solace.com/products/event-broker/software/) but creating new sources or destinations is straightforward.
+This is a simple tool intended to help bridge event sources and destinations where there isn't a natural connection deployment already available within OCI.  It has been initially developed to support connecting [OCI Queues](https://www.oracle.com/cloud/queue/), [OCI Streaming](https://www.oracle.com/cloud/streaming/) (using Kafka protocol), and with [Solace](https://solace.com/) [PubSub+](https://solace.com/products/event-broker/software/) but creating new sources or destinations is straightforward. As the connections simply need to extend an abstract class (additionally, a factory method needs to be extended until the factory process is refactored to use reflection.) The implementation uses [Maven](https://maven.apache.org/) to build the code and can work with Java 11 or later.
 
-The configuration is driven via environment property values, making it simple to deploy within containers - no external configuration files are needed.
+# Getting Started
 
+The details for configuring the bridge can be found in the docs [here](./docs/bridge-configuration.md).
 
+The bridge can be run locally or within OCI.  We have included resources in the /deploy folder to enable the bridge to be deployed in [Container Engine for Kubernetes](https://www.oracle.com/uk/cloud/cloud-native/container-engine-kubernetes/) (or any other Kubernetes environment).
 
-## Getting Started
+This solution assumes that you will have created the relevant services and policies.  If you wish to demo with OCI Solace (the original motivation for the utility), then we would recommend following [these details](./docs/deploying-Solace) for deploying Solace PubSub+ on OCI.
 
-All configuration values are case-sensitive.
+An example demo deployment:
 
-We have provided a simple script to support running the utility locally, which will set up the environment variables needed for a simple configuration.
+![](./docs/example-solution-infra.png)
 
-### Properties
+# Configuring the bridge
 
-#### Core
-
-| Env Var Name          | Description                                                  | Example Value |
-| --------------------- | ------------------------------------------------------------ | ------------- |
-| isMultiPass           | Tells the tool whether to make single pass through all the connections of all of them and repeat. | True          |
-| milliDelayOnMultiPass |                                                              |               |
-| ListConnectorProps    |                                                              |               |
-| ConnectionList        |                                                              |               |
-
-The following provides details of the different properties needed and what they do. With the exception of the core properties, the configuration values need to be prefixed with the connection name, which is used to trace the configuration values to the connections in the `ListConnectorProps`. For example
-
-`ListConnectionProperties=Synthetic1-Synthetic2`
-
-`Synthetic1__Type=Synthetic`
-
-We use a double underscore to separate the connection name and the attribute for that connection's configuration.
-
-##### Common Connection Attributes
-
-| Env Var Name | Description                                                  | Example Value |
-| ------------ | ------------------------------------------------------------ | ------------- |
-| Type         | Defines the connection type that is being represented, Currently accepted values are: Synthetic, Solace, OCIQUEUE. Each type of connection must have a unique type name. | Synthetic     |
-
-#### OCI Queue
-
-| Env Var Name     | Description | Example Value |
-| ---------------- | ----------- | ------------- |
-| OCI_AUTHFILE     |             |               |
-| OCI_USERID       |             |               |
-| OCI_TENANT_ID    |             |               |
-| OCI_FINGERPRINT  |             |               |
-| OCI_REGION       |             |               |
-| OCI_QUEUEID      |             |               |
-| POLLDURATIONSECS |             |               |
-| QUEUENAME        |             |               |
-
-#### Solace Pub/Sub+
-
-Where ever possible, we try to propagate the Solace configuration values through to Solace Pub/Sub+. However, there are a couple of constraints.
-
-- Solace uses a dot notation within some of its properties. As this can present issues with some OSes for environment variables, we have implemented a substitution mechanism. So within the Solace variable names, if a dot (.) is used, then for the environment variables, replace it with an underscore  (_)
-
-| Env Var Name                           | Description | Example Value |
-| -------------------------------------- | ----------- | ------------- |
-| SOLACE_PORT                            |             |               |
-| host                                   |             |               |
-| MESSAGE_TYPE                           |             |               |
-| solace_messaging_authentication_scheme |             |               |
-| username                               |             |               |
-| password                               |             |               |
-| SOLACE_TOPICNAME                       |             |               |
-| vpn_name                               |             |               |
-
-#### Synthetic
-
-The synthetic configuration doesn't need any parameters.
+The bridge can be configured in a number of ways. The details of the bridge configuration itself are covered [here](./docs/bridge-configuration.md).
 
 # Contributing
 
