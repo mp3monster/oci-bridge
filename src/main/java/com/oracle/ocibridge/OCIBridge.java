@@ -73,6 +73,10 @@ public class OCIBridge extends Object {
   static class MessageList extends ArrayList<String> {
   }
 
+  /**
+   * @param propParams
+   * @return String
+   */
   /*
    * Use this so we can see the parameters that are needed. Helpful when looking
    * at Solace config needs
@@ -329,6 +333,9 @@ public class OCIBridge extends Object {
 
   }
 
+  /*
+   * retrieves and returns a boolean as to whether this is a multiPass setup
+   */
   private static boolean isMultiPass() {
     if (allProps == null) {
       logger.error("Not initialized with props");
@@ -340,7 +347,8 @@ public class OCIBridge extends Object {
   }
 
   /*
-   * 
+   * Controls the execution of a singple pass of all the connection pairs calling
+   * the receive and send operations
    */
   private static void singlePass() {
     logger.info("starting pass");
@@ -400,6 +408,9 @@ public class OCIBridge extends Object {
 
   }
 
+  /*
+   * If called will send to logs all the known params for each connection type
+   */
   private static void displayConnectionTypeParams() {
     logger.info("Solace props:\n" + listParams(SolaceConnection.getPropParams()));
     logger.info("OCI props:\n" + listParams(OCIQueueConnection.getPropParams()));
